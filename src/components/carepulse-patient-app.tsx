@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   Sparkles,
   Stethoscope,
+  UserRound,
   X,
 } from "lucide-react";
 
@@ -174,7 +175,7 @@ export function CarePulsePatientApp() {
       {bannerOpen && (
         <div className="flex min-h-8 items-center justify-center gap-2 bg-care-deep px-10 py-1.5 text-center text-[11px] font-medium text-primary-foreground">
           <span className="size-1.5 shrink-0 rounded-full bg-care-amber" />
-          {linked ? "Connected to your clinic record · Screening remains unavailable" : "Preview content is sample-only · Sign in to view your clinic directory"}
+          {linked ? "Connected to your clinic record · Screening remains unavailable" : record.status === "unlinked" ? <>Signed in · Link your clinic record to see your visits <Button variant="link" onClick={() => go("account")} className="h-auto p-0 text-[11px] font-semibold text-primary-foreground underline">Link record</Button></> : "Preview content is sample-only · Sign in to view your clinic directory"}
           <Button variant="ghost" size="icon" aria-label="Dismiss preview notice" onClick={() => setBannerOpen(false)} className="absolute right-2 h-6 w-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
             <X className="size-3" />
           </Button>
@@ -220,7 +221,7 @@ export function CarePulsePatientApp() {
             </div>
           </header>
 
-          {menuOpen && <nav aria-label="Mobile navigation" className="absolute inset-x-0 z-30 space-y-1 border-b border-care-line bg-background p-3 shadow-md lg:hidden">{navigation.map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" onClick={() => go(id)} className="w-full justify-start gap-3"><Icon className="size-4" />{label}</Button>)}</nav>}
+          {menuOpen && <nav aria-label="Mobile navigation" className="absolute inset-x-0 z-30 space-y-1 border-b border-care-line bg-background p-3 shadow-md lg:hidden">{navigation.map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" onClick={() => go(id)} className="w-full justify-start gap-3"><Icon className="size-4" />{label}</Button>)}<Button variant="ghost" onClick={() => go("account")} className="w-full justify-start gap-3"><UserRound className="size-4" />{session ? "My account" : "Sign in"}</Button></nav>}
 
           <main className="mx-auto max-w-[1140px] px-4 pb-28 pt-7 sm:px-7 md:pb-12 md:pt-9 lg:px-10">
             {current && <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -229,6 +230,7 @@ export function CarePulsePatientApp() {
             </div>}
 
             {activeView === "home" && <div className="space-y-7">
+              {record.status === "unlinked" && <section aria-label="Link your clinic record" className="rounded-md border border-care-teal/40 bg-care-panel/60 p-4 sm:p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-md bg-background text-care-teal"><ShieldCheck className="size-5" /></span><div><p className="text-sm font-semibold text-care-ink">Link your clinic record</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Connect this account to the patient record your clinic holds for {session?.user.email ?? "your email"} to see your visits and passes.</p></div></div><LinkClinicRecordPanel onLinked={() => { refreshRecord(); setDirectoryRefreshToken((token) => token + 1); }} onAlreadyLinked={refreshRecord} className="sm:w-[220px]" /></div></section>}
               <section className="relative isolate min-h-[235px] overflow-hidden rounded-md bg-care-deep sm:min-h-[260px]" aria-label="Welcome to CarePulse">
                 <img src={consultationPhoto} alt="Doctor having a calm conversation with a patient" width={1536} height={1024} className="absolute inset-0 -z-20 size-full object-cover object-[center_43%]" />
                 <div className="absolute inset-0 -z-10 bg-gradient-to-r from-care-deep/95 via-care-deep/85 to-care-deep/10" />
@@ -437,7 +439,39 @@ function LiveNotifications({ state }: { state: PatientNotificationsState }) {
   );
 }
 
-function AccountScreen({ accountView, onSetView, session, record, refreshRecord, onAccountLinked }: { accountView: AccountView; onSetView: (view: AccountView) => void; session: Session | null; record: PatientRecordState; refreshRecord: () => void; onAccountLinked: () => void }) {
+export function linkErrorMessage(message: string) {
+  if (message.includes("EMAIL_NOT_VERIFIED")) return "Confirm your email address before linking your clinic record.";
+  if (message.includes("ALREADY_LINKED")) return "This account is already linked to a clinic record. Refreshing your profile.";
+  if (message.includes("MULTIPLE_MATCHES")) return "The clinic needs to review multiple records matching this email. Contact the front desk.";
+  if (message.includes("NOT_FOUND")) return "No clinic record matched your verified email. Contact the front desk for help.";
+  return "Your clinic record couldn’t be linked right now. Please try again later.";
+}
+
+export function LinkClinicRecordPanel({ onLinked, onAlreadyLinked, className = "" }: { onLinked: () => void; onAlreadyLinked: () => void; className?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const link = async () => {
+    setBusy(true);
+    setNotice(null);
+    const { error } = await requestPatientAccountLink();
+    setBusy(false);
+    if (error) {
+      setNotice({ tone: "error", text: linkErrorMessage(error.message) });
+      if (error.message.includes("ALREADY_LINKED")) onAlreadyLinked();
+      return;
+    }
+    setNotice({ tone: "ok", text: "Your clinic record is linked. Loading your profile…" });
+    onLinked();
+  };
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <Button onClick={() => void link()} disabled={busy} className="w-full gap-2"><ShieldCheck className="size-4" />{busy ? "Checking clinic record…" : "Link my clinic record"}</Button>
+      {notice && <p role="status" className={`rounded-md border p-2.5 text-xs ${notice.tone === "error" ? "border-destructive/40 text-destructive" : "border-care-line bg-background text-care-deep"}`}>{notice.text}</p>}
+    </div>
+  );
+}
+
+export function AccountScreen({ accountView, onSetView, session, record, refreshRecord, onAccountLinked }: { accountView: AccountView; onSetView: (view: AccountView) => void; session: Session | null; record: PatientRecordState; refreshRecord: () => void; onAccountLinked: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -451,30 +485,6 @@ function AccountScreen({ accountView, onSetView, session, record, refreshRecord,
   const isRegister = accountView === "register";
   const isForgot = accountView === "forgot";
 
-  const linkClinicRecord = async () => {
-    setBusy(true);
-    setNotice(null);
-    const { error } = await requestPatientAccountLink();
-    setBusy(false);
-    if (error) {
-      const message = error.message.includes("EMAIL_NOT_VERIFIED")
-        ? "Confirm your email address before linking your clinic record."
-        : error.message.includes("ALREADY_LINKED")
-          ? "This account is already linked to a clinic record. Refreshing your profile."
-          : error.message.includes("MULTIPLE_MATCHES")
-            ? "The clinic needs to review multiple records matching this email. Contact the front desk."
-            : error.message.includes("NOT_FOUND")
-              ? "No clinic record matched your verified email. Contact the front desk for help."
-              : "Your clinic record couldn’t be linked right now. Please try again later.";
-      setNotice({ tone: "error", text: message });
-      if (error.message.includes("ALREADY_LINKED")) refreshRecord();
-      return;
-    }
-    setNotice({ tone: "ok", text: "Your clinic record is linked. Loading your profile…" });
-    refreshRecord();
-    onAccountLinked();
-  };
-
   if (session) {
     return (
       <section className="mx-auto max-w-md py-4 md:py-10">
@@ -483,8 +493,9 @@ function AccountScreen({ accountView, onSetView, session, record, refreshRecord,
         <p className="mt-2 text-sm text-muted-foreground">{session.user.email}</p>
         <div className="mt-6 rounded-md border border-care-line bg-background p-4 text-sm">
           {record.status === "loading" && <p className="text-muted-foreground">Looking up your clinic record…</p>}
-          {record.status === "unlinked" && <div className="space-y-3"><p className="text-muted-foreground">Your account isn’t linked to a clinic patient record yet. Link the record matching your verified email address.</p><Button onClick={() => void linkClinicRecord()} disabled={busy} className="w-full">{busy ? "Checking clinic record…" : "Link my clinic record"}</Button></div>}
-          {record.status === "blocked" && <p className="text-muted-foreground">{record.message}</p>}
+          {record.status === "unlinked" && <div className="space-y-3"><p className="text-muted-foreground">Your account isn’t linked to a clinic patient record yet. Link the record matching your verified email address.</p><LinkClinicRecordPanel onLinked={() => { refreshRecord(); onAccountLinked(); }} onAlreadyLinked={refreshRecord} /></div>}
+          {record.status === "blocked" && <div className="space-y-3"><p className="text-muted-foreground">{record.message}</p><Button variant="outline" size="sm" onClick={refreshRecord}>Try again</Button></div>}
+          {record.status === "linked" && <div role="status" className="mb-4 flex items-center gap-2 rounded-md border border-care-line bg-care-panel/60 p-3 text-xs font-medium text-care-deep"><BadgeCheck className="size-4 shrink-0 text-care-teal" /> Clinic record linked{record.clinic?.name ? ` · ${record.clinic.name}` : ""}</div>}
           {record.status === "linked" && <dl className="space-y-2">{([["Name", record.patient.full_name], ["Date of birth", record.patient.date_of_birth], ["Phone", record.patient.phone], ["Email", record.patient.email], ["Address", record.patient.address], ["Emergency contact", [record.patient.emergency_contact_name, record.patient.emergency_contact_phone].filter(Boolean).join(" · ")]] as const).map(([k, v]) => <div key={k} className="flex justify-between gap-4"><dt className="text-muted-foreground">{k}</dt><dd className="text-right font-medium">{v || "—"}</dd></div>)}</dl>}
         </div>
         {notice && <p role="status" className={`mt-3 rounded-md border p-3 text-xs ${notice.tone === "error" ? "border-destructive/40 text-destructive" : "border-care-line bg-care-panel/60 text-care-deep"}`}>{notice.text}</p>}
