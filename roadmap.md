@@ -7,4 +7,7 @@
 - [x] Reconnect the original clinic database to this remix (security update confirmed in place).
 - [x] Show the patient's real upcoming visit, appointment passes (reference + QR), clinic hours and clinic messages once their record is linked.
 - [x] Confirm the QR format the clinic scanner expects (CAREPULSE|reference|token).
+- [x] Tappable appointment cards with a details screen, pass display (reference + QR) and pass download.
+- [ ] Fix the clinic's automatic pass creation (fails with "gen_random_bytes does not exist"); the one-line database fix was declined, so no passes can be created until it's approved.
+- [ ] Clinic staff to verify the July 2000 appointment date before any pass is created for it.
 - [ ] Test sign-in, patient linking and the doctor list end-to-end with a real patient account (needs a patient to sign in on the preview).

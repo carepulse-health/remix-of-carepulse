@@ -1,15 +1,17 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { requestPatientAccountLink, usePatientSession, type PatientAppointment, type PatientClinic, type PatientPass, type PatientRecordState } from "@/hooks/use-patient-session";
 import { useDoctorDirectory } from "@/hooks/use-doctor-directory";
 import { usePatientNotifications, type PatientNotificationsState } from "@/hooks/use-patient-notifications";
-import { appointmentPassQrValue, isPassActive, isUpcomingAppointment, localDateKey } from "@/lib/appointment-pass";
-import { QRCodeSVG } from "qrcode.react";
+import { appointmentPassQrValue, isPassActive, isPassValid, isUpcomingAppointment, localDateKey } from "@/lib/appointment-pass";
+import { downloadAppointmentPass } from "@/lib/download-appointment-pass";
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 import type { Json } from "@/integrations/supabase/types";
 import type { Session } from "@supabase/supabase-js";
 import {
   Activity,
   ArrowDownRight,
+  ArrowLeft,
   ArrowRight,
   AudioLines,
   BadgeCheck,
@@ -18,6 +20,9 @@ import {
   Check,
   ChevronRight,
   Clock3,
+  Download,
+  Phone,
+  RefreshCw,
   FileHeart,
   HeartPulse,
   House,
@@ -132,6 +137,7 @@ export function CarePulsePatientApp() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [chosenDoctor, setChosenDoctor] = useState<string | null>(null);
   const [appointmentTab, setAppointmentTab] = useState<"upcoming" | "past">("upcoming");
+  const [openAppointmentId, setOpenAppointmentId] = useState<string | null>(null);
   const availableDoctors = directory.status === "ready" ? directory.doctors : [];
   const filteredDoctors = useMemo(
     () => availableDoctors.filter((doctor) => `${doctor.full_name ?? ""} ${doctor.specialization ?? ""}`.toLowerCase().includes(searchTerm.toLowerCase())),
@@ -144,6 +150,7 @@ export function CarePulsePatientApp() {
     setActiveView(view);
     setMenuOpen(false);
     if (view === "home") setChosenDoctor(null);
+    setOpenAppointmentId(null);
   };
 
   const bookDoctor = (doctorId?: string | null) => {
@@ -247,7 +254,7 @@ export function CarePulsePatientApp() {
                 <div className="space-y-7">
                   <section>
                     <SectionTitle title="Your upcoming visit" detail={linked ? "From your clinic record." : "A sample appointment for preview only."} action={<Button variant="link" onClick={() => go("appointments")} className="h-8 gap-1 p-0 text-xs text-care-teal">All appointments <ArrowRight className="size-3.5" /></Button>} />
-                    {linked ? <LiveUpcomingVisit appointment={nextAppointment} hasPass={Boolean(nextAppointment && linked.passes.some((pass) => pass.appointment_id === nextAppointment.id && isPassActive(pass.expires_at)))} clinicAddress={linked.clinic?.address ?? null} onOpen={() => go("appointments")} /> : <>
+                    {linked ? <LiveUpcomingVisit appointment={nextAppointment} hasPass={Boolean(nextAppointment && isPassValid(linked.passes.find((pass) => pass.appointment_id === nextAppointment.id), nextAppointment.status))} clinicAddress={linked.clinic?.address ?? null} onOpen={() => { go("appointments"); if (nextAppointment) setOpenAppointmentId(nextAppointment.id); }} /> : <>
                     <article className="overflow-hidden rounded-md border border-care-line bg-background">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-care-line bg-care-panel/70 px-4 py-2.5">
                         <span className="flex items-center gap-2 text-xs font-semibold text-care-deep"><span className="size-2 rounded-full bg-care-amber" /> SAMPLE PREVIEW</span><span className="text-xs text-muted-foreground">Request not submitted</span>
@@ -314,8 +321,8 @@ export function CarePulsePatientApp() {
             </div>}
 
             {activeView === "appointments" && <div className="space-y-5">
-              <section className="flex flex-wrap items-center justify-between gap-3 border-b border-care-line pb-4"><p className="text-sm text-muted-foreground">{linked ? "Appointments booked for you by your clinic." : "Sample appointments · no booking information is stored."}</p><div className="flex gap-1 rounded-md bg-muted p-1"><Button size="sm" variant={appointmentTab === "upcoming" ? "default" : "ghost"} onClick={() => setAppointmentTab("upcoming")} className="h-8 px-3 text-xs">Upcoming</Button><Button size="sm" variant={appointmentTab === "past" ? "default" : "ghost"} onClick={() => setAppointmentTab("past")} className="h-8 px-3 text-xs">Past visits</Button></div></section>
-              {record.status === "linked" ? <LiveAppointments record={record} tab={appointmentTab} today={today} /> : appointmentTab === "upcoming" ? <article className="max-w-2xl overflow-hidden rounded-md border border-care-line bg-background"><div className="flex items-center justify-between gap-2 border-b border-care-line bg-care-panel/60 px-4 py-3"><span className="flex items-center gap-2 text-xs font-semibold text-care-deep"><span className="size-2 rounded-full bg-care-amber" /> EXAMPLE REQUEST</span><Badge variant="outline" className="border-care-line bg-background text-[10px]">Not submitted</Badge></div><div className="p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-display text-xl font-semibold">Friday, November 13</p><p className="mt-1 text-sm text-muted-foreground">11:30 AM · Family medicine</p></div><span className="grid size-11 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-5" /></span></div><div className="mt-5 space-y-3 border-t border-care-line pt-4 text-sm"><p className="flex items-center gap-2"><Stethoscope className="size-4 text-care-teal" />Doctor assigned on clinic record</p><p className="flex items-center gap-2"><MapPin className="size-4 text-care-teal" />Clinic location · sample only</p></div><div className="mt-5 border-t border-care-line pt-4"><Button onClick={() => go("doctors")} variant="outline" size="sm" className="gap-2"><Plus className="size-3.5" /> Explore clinic directory</Button><p className="mt-3 text-[11px] text-muted-foreground">Appointment passes are unavailable until the clinic connection is configured.</p></div></div></article> : <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-muted text-muted-foreground"><FileHeart className="size-[18px]" /></span><div><p className="text-sm font-semibold">Annual wellness visit</p><p className="mt-1 text-xs text-muted-foreground">Sample history · Tuesday, September 8</p></div><span className="ml-auto text-xs text-muted-foreground">Example only</span></div></div>}
+              {!(linked && openAppointmentId) && <section className="flex flex-wrap items-center justify-between gap-3 border-b border-care-line pb-4"><p className="text-sm text-muted-foreground">{linked ? "Appointments booked for you by your clinic." : "Sample appointments · no booking information is stored."}</p><div className="flex gap-1 rounded-md bg-muted p-1"><Button size="sm" variant={appointmentTab === "upcoming" ? "default" : "ghost"} onClick={() => setAppointmentTab("upcoming")} className="h-8 px-3 text-xs">Upcoming</Button><Button size="sm" variant={appointmentTab === "past" ? "default" : "ghost"} onClick={() => setAppointmentTab("past")} className="h-8 px-3 text-xs">Past visits</Button></div></section>}
+              {record.status === "linked" ? (openAppointmentId && record.appointments.some((a) => a.id === openAppointmentId) ? <AppointmentDetails appointment={record.appointments.find((a) => a.id === openAppointmentId)!} pass={record.passes.find((pass) => pass.appointment_id === openAppointmentId)} clinic={record.clinic} onBack={() => setOpenAppointmentId(null)} onRefresh={refreshRecord} /> : <LiveAppointments record={record} tab={appointmentTab} today={today} onOpen={setOpenAppointmentId} />) : appointmentTab === "upcoming" ? <article className="max-w-2xl overflow-hidden rounded-md border border-care-line bg-background"><div className="flex items-center justify-between gap-2 border-b border-care-line bg-care-panel/60 px-4 py-3"><span className="flex items-center gap-2 text-xs font-semibold text-care-deep"><span className="size-2 rounded-full bg-care-amber" /> EXAMPLE REQUEST</span><Badge variant="outline" className="border-care-line bg-background text-[10px]">Not submitted</Badge></div><div className="p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-display text-xl font-semibold">Friday, November 13</p><p className="mt-1 text-sm text-muted-foreground">11:30 AM · Family medicine</p></div><span className="grid size-11 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-5" /></span></div><div className="mt-5 space-y-3 border-t border-care-line pt-4 text-sm"><p className="flex items-center gap-2"><Stethoscope className="size-4 text-care-teal" />Doctor assigned on clinic record</p><p className="flex items-center gap-2"><MapPin className="size-4 text-care-teal" />Clinic location · sample only</p></div><div className="mt-5 border-t border-care-line pt-4"><Button onClick={() => go("doctors")} variant="outline" size="sm" className="gap-2"><Plus className="size-3.5" /> Explore clinic directory</Button><p className="mt-3 text-[11px] text-muted-foreground">Appointment passes are unavailable until the clinic connection is configured.</p></div></div></article> : <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-muted text-muted-foreground"><FileHeart className="size-[18px]" /></span><div><p className="text-sm font-semibold">Annual wellness visit</p><p className="mt-1 text-xs text-muted-foreground">Sample history · Tuesday, September 8</p></div><span className="ml-auto text-xs text-muted-foreground">Example only</span></div></div>}
             </div>}
 
             {activeView === "assistant" && <div className="max-w-2xl">
@@ -395,32 +402,111 @@ function LiveClinicHours({ clinic }: { clinic: PatientClinic | null }) {
   );
 }
 
-function AppointmentPassCard({ pass }: { pass: PatientPass }) {
-  const [showCode, setShowCode] = useState(false);
-  const qrValue = appointmentPassQrValue(pass.reference_code, pass.qr_code);
-  const active = isPassActive(pass.expires_at);
-  return (
-    <div className="mt-3 border-t border-care-line pt-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div><p className="text-[10px] font-semibold text-muted-foreground">APPOINTMENT PASS</p><p className="mt-0.5 font-mono text-sm font-semibold tracking-wider text-care-deep">{pass.reference_code}</p>{pass.expires_at && <p className="mt-0.5 text-[11px] text-muted-foreground">{active ? "Valid until" : "Expired"} {new Date(pass.expires_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>}</div>
-        <div className="flex gap-2">
-          {pass.pdf_url && <Button asChild variant="ghost" size="sm" className="text-xs"><a href={pass.pdf_url} target="_blank" rel="noreferrer">Download</a></Button>}
-          {qrValue && active && <Button variant="outline" size="sm" className="text-xs" onClick={() => setShowCode((open) => !open)}>{showCode ? "Hide code" : "Show code"}</Button>}
-        </div>
+const visitInstructions = [
+  "Arrive 15 minutes early to check in at the front desk.",
+  "Bring a photo ID and any referral letters or test results.",
+  "Bring a list of the medicines you currently take.",
+  "Show your appointment pass at the front desk when you arrive.",
+  "If you can’t make it, call the clinic as early as possible to reschedule.",
+];
+
+function AppointmentPassPanel({ appointment, pass, clinic, onRefresh }: { appointment: PatientAppointment; pass: PatientPass | undefined; clinic: PatientClinic | null; onRefresh: () => void }) {
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const valid = isPassValid(pass, appointment.status);
+  const qrValue = valid && pass ? appointmentPassQrValue(pass.reference_code, pass.qr_code) : null;
+
+  if (!pass || !qrValue) {
+    const expired = Boolean(pass && !isPassActive(pass.expires_at));
+    return (
+      <div className="rounded-md border border-dashed border-care-line bg-care-panel/40 p-5 text-center">
+        <span className="mx-auto grid size-10 place-items-center rounded-md bg-background text-care-teal"><ShieldCheck className="size-5" /></span>
+        <p className="mt-3 text-sm font-medium text-care-ink">{expired ? "This appointment pass has expired. Contact your clinic for a new one." : "Your appointment pass will appear once the clinic confirms your visit."}</p>
+        <Button variant="outline" size="sm" onClick={onRefresh} className="mt-4 gap-2"><RefreshCw className="size-3.5" /> Check again</Button>
       </div>
-      {showCode && qrValue && <div className="mt-3 flex flex-col items-center gap-2 rounded-md border border-care-line bg-background p-4"><QRCodeSVG value={qrValue} size={168} level="M" aria-label={`QR code for appointment pass ${pass.reference_code}`} /><p className="text-center text-[11px] text-muted-foreground">Show this code at the clinic front desk.</p></div>}
+    );
+  }
+
+  const download = async () => {
+    setDownloadError(null);
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return setDownloadError("The pass couldn’t be prepared. Please try again.");
+    try {
+      await downloadAppointmentPass({
+        qrCanvas: canvas,
+        referenceCode: pass.reference_code,
+        clinicName: clinic?.name ?? "Your clinic",
+        visitDate: formatVisitDate(appointment.appointment_date),
+        visitTime: formatVisitTime(appointment.appointment_time),
+        doctorName: appointment.doctor?.full_name ?? "To be assigned",
+      });
+    } catch {
+      setDownloadError("The pass couldn’t be downloaded. Please try again.");
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-care-line bg-background p-5">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <p className="text-[10px] font-semibold text-muted-foreground">APPOINTMENT REFERENCE</p>
+        <p className="font-mono text-lg font-semibold tracking-wider text-care-deep">{pass.reference_code}</p>
+        <div className="rounded-md border border-care-line bg-background p-3"><QRCodeSVG value={qrValue} size={196} level="M" marginSize={1} role="img" aria-label={`QR code for appointment pass ${pass.reference_code}`} /></div>
+        <QRCodeCanvas ref={qrCanvasRef} value={qrValue} size={720} level="M" marginSize={2} className="hidden" aria-hidden="true" />
+        {pass.expires_at && <p className="text-[11px] text-muted-foreground">Valid until {new Date(pass.expires_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>}
+        <p className="max-w-xs text-xs text-muted-foreground">Show this code at the clinic front desk. Keep it private — it’s unique to your visit.</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button size="sm" onClick={() => void download()} className="gap-2"><Download className="size-3.5" /> Download pass</Button>
+          {pass.pdf_url && <Button asChild variant="outline" size="sm"><a href={pass.pdf_url} target="_blank" rel="noreferrer">Clinic PDF</a></Button>}
+        </div>
+        {downloadError && <p role="alert" className="text-xs text-destructive">{downloadError}</p>}
+      </div>
     </div>
   );
 }
 
-function LiveAppointments({ record, tab, today }: { record: Extract<PatientRecordState, { status: "linked" }>; tab: "upcoming" | "past"; today: string }) {
+export function AppointmentDetails({ appointment, pass, clinic, onBack, onRefresh }: { appointment: PatientAppointment; pass: PatientPass | undefined; clinic: PatientClinic | null; onBack: () => void; onRefresh: () => void }) {
+  const rows: [string, React.ReactNode][] = [
+    ["Doctor", appointment.doctor?.full_name ?? "To be assigned"],
+    ["Specialty", appointment.doctor?.specialization ?? "Not listed"],
+    ["Clinic", clinic?.name ?? "Not listed"],
+    ["Address", clinic?.address ?? "Not listed"],
+    ["Phone", clinic?.phone ? <a href={`tel:${clinic.phone}`} className="inline-flex items-center gap-1 text-care-teal"><Phone className="size-3" />{clinic.phone}</a> : "Not listed"],
+    ["Booked on", appointment.created_at ? new Date(appointment.created_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : "Not recorded"],
+  ];
+  return (
+    <div className="max-w-2xl space-y-5">
+      <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2 gap-1.5 text-xs text-muted-foreground"><ArrowLeft className="size-3.5" /> All appointments</Button>
+      <article className="overflow-hidden rounded-md border border-care-line bg-background">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-care-line bg-care-panel/60 p-5">
+          <div><p className="text-[10px] font-semibold text-care-teal">APPOINTMENT</p><h2 className="mt-1 font-display text-xl font-semibold text-care-ink">{formatVisitDate(appointment.appointment_date)}</h2><p className="mt-1 text-sm text-muted-foreground">{formatVisitTime(appointment.appointment_time)}</p></div>
+          <Badge variant="outline" className="border-care-line bg-background capitalize">{appointment.status ?? "pending"}</Badge>
+        </div>
+        <dl className="divide-y divide-care-line/70 px-5">
+          {rows.map(([label, value]) => <div key={label} className="flex justify-between gap-4 py-3 text-sm"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium text-care-ink">{value}</dd></div>)}
+          {appointment.reason && <div className="flex justify-between gap-4 py-3 text-sm"><dt className="text-muted-foreground">Reason</dt><dd className="text-right font-medium text-care-ink">{appointment.reason}</dd></div>}
+        </dl>
+      </article>
+      <section aria-label="Appointment pass">
+        <SectionTitle title="Appointment pass" />
+        <AppointmentPassPanel appointment={appointment} pass={pass} clinic={clinic} onRefresh={onRefresh} />
+      </section>
+      <section aria-label="Visit instructions" className="rounded-md border border-care-line bg-background p-5">
+        <h3 className="text-sm font-semibold">Before your visit</h3>
+        <ul className="mt-3 space-y-2">{visitInstructions.map((item) => <li key={item} className="flex gap-2 text-xs leading-relaxed text-muted-foreground"><Check className="mt-0.5 size-3.5 shrink-0 text-care-teal" />{item}</li>)}</ul>
+        <p className="mt-4 border-t border-care-line pt-3 text-[11px] text-muted-foreground">General visit guidance. For urgent symptoms, contact your clinic or local emergency services.</p>
+      </section>
+    </div>
+  );
+}
+
+function LiveAppointments({ record, tab, today, onOpen }: { record: Extract<PatientRecordState, { status: "linked" }>; tab: "upcoming" | "past"; today: string; onOpen: (id: string) => void }) {
   const list = record.appointments
     .filter((a) => (tab === "upcoming" ? isUpcomingAppointment(a.appointment_date, today) : !isUpcomingAppointment(a.appointment_date, today)))
     .sort((a, b) => (tab === "upcoming" ? 1 : -1) * `${a.appointment_date} ${a.appointment_time}`.localeCompare(`${b.appointment_date} ${b.appointment_time}`));
   if (list.length === 0) return <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-6 text-sm text-muted-foreground">No {tab === "upcoming" ? "upcoming" : "past"} appointments on your clinic record.</div>;
   return <div className="max-w-2xl space-y-3">{list.map((a) => {
-    const pass = tab === "upcoming" ? record.passes.find((item) => item.appointment_id === a.id) : undefined;
-    return <div key={a.id} className="rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-[18px]" /></span><div className="min-w-0"><p className="text-sm font-semibold">{formatVisitDate(a.appointment_date)} · {formatVisitTime(a.appointment_time)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{a.doctor?.full_name ?? "Doctor to be assigned"}{a.reason ? ` · ${a.reason}` : ""}</p></div><Badge variant="outline" className="ml-auto border-care-line text-[10px] capitalize">{a.status ?? "pending"}</Badge></div>{pass && <AppointmentPassCard pass={pass} />}</div>;
+    const hasPass = tab === "upcoming" && isPassValid(record.passes.find((item) => item.appointment_id === a.id), a.status);
+    return <button key={a.id} type="button" onClick={() => onOpen(a.id)} aria-label={`View appointment on ${formatVisitDate(a.appointment_date)} at ${formatVisitTime(a.appointment_time)}`} className="group block w-full rounded-md border border-care-line bg-background px-4 py-3 text-left transition-colors hover:bg-care-mist/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-[18px]" /></span><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{formatVisitDate(a.appointment_date)} · {formatVisitTime(a.appointment_time)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{a.doctor?.full_name ?? "Doctor to be assigned"}{a.reason ? ` · ${a.reason}` : ""}</p>{hasPass && <p className="mt-1 text-[11px] font-medium text-care-teal">Appointment pass ready</p>}</div><Badge variant="outline" className="border-care-line text-[10px] capitalize">{a.status ?? "pending"}</Badge><ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div></button>;
   })}</div>;
 }
 

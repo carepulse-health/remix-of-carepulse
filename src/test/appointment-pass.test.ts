@@ -23,3 +23,26 @@ describe("appointment passes", () => {
     expect(isUpcomingAppointment("2026-11-20", "2026-11-21")).toBe(false);
   });
 });
+
+import { isPassValid, passDownloadFileName } from "@/lib/appointment-pass";
+
+describe("appointment pass validity", () => {
+  const now = new Date("2026-11-21T12:00:00Z");
+  const pass = { qr_code: "tok_abc", expires_at: null };
+
+  it("shows a pass only for a visit the clinic has confirmed", () => {
+    expect(isPassValid(pass, "confirmed", now)).toBe(true);
+    expect(isPassValid(pass, "pending", now)).toBe(false);
+    expect(isPassValid(pass, "cancelled", now)).toBe(false);
+  });
+
+  it("hides a pass that has no token or has expired", () => {
+    expect(isPassValid({ qr_code: null, expires_at: null }, "confirmed", now)).toBe(false);
+    expect(isPassValid({ qr_code: "tok_abc", expires_at: "2026-11-21T11:00:00Z" }, "confirmed", now)).toBe(false);
+    expect(isPassValid(undefined, "confirmed", now)).toBe(false);
+  });
+
+  it("names the downloaded pass by its reference, never its token", () => {
+    expect(passDownloadFileName("CP-ABC123")).toBe("carepulse-pass-CP-ABC123.png");
+  });
+});

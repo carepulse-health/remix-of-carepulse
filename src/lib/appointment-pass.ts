@@ -19,3 +19,25 @@ export function localDateKey(date = new Date()) {
 export function isPassActive(expiresAt: string | null, now = new Date()) {
   return !expiresAt || new Date(expiresAt).getTime() > now.getTime();
 }
+
+/** Visit statuses that mean the clinic has confirmed the appointment. */
+export function isConfirmedStatus(status: string | null) {
+  return (status ?? "").trim().toLowerCase() === "confirmed";
+}
+
+/**
+ * A pass is shown to the patient only when the clinic has confirmed the visit,
+ * issued a token for it, and the pass has not expired.
+ */
+export function isPassValid(
+  pass: { qr_code: string | null; expires_at: string | null } | undefined,
+  appointmentStatus: string | null,
+  now = new Date(),
+) {
+  return Boolean(pass?.qr_code) && isConfirmedStatus(appointmentStatus) && isPassActive(pass?.expires_at ?? null, now);
+}
+
+/** Download file name uses only the public reference code, never the secret token. */
+export function passDownloadFileName(referenceCode: string) {
+  return `carepulse-pass-${referenceCode.replace(/[^A-Za-z0-9-]/g, "")}.png`;
+}
