@@ -1,7 +1,11 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { requestPatientAccountLink, usePatientSession, type PatientRecordState } from "@/hooks/use-patient-session";
+import { requestPatientAccountLink, usePatientSession, type PatientAppointment, type PatientClinic, type PatientPass, type PatientRecordState } from "@/hooks/use-patient-session";
 import { useDoctorDirectory } from "@/hooks/use-doctor-directory";
+import { usePatientNotifications, type PatientNotificationsState } from "@/hooks/use-patient-notifications";
+import { appointmentPassQrValue, isPassActive, isUpcomingAppointment, localDateKey } from "@/lib/appointment-pass";
+import { QRCodeSVG } from "qrcode.react";
+import type { Json } from "@/integrations/supabase/types";
 import type { Session } from "@supabase/supabase-js";
 import {
   Activity,
@@ -66,10 +70,10 @@ function SectionTitle({ title, detail, action }: { title: string; detail?: strin
   );
 }
 
-function SampleLabel({ liveDirectory }: { liveDirectory: boolean }) {
+function SampleLabel({ liveLabel }: { liveLabel: string | null }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-care-line bg-background px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
-      <span className={`size-1.5 rounded-full ${liveDirectory ? "bg-care-teal" : "bg-care-amber"}`} /> {liveDirectory ? "CLINIC DIRECTORY" : "SAMPLE PREVIEW"}
+      <span className={`size-1.5 rounded-full ${liveLabel ? "bg-care-teal" : "bg-care-amber"}`} /> {liveLabel ?? "SAMPLE PREVIEW"}
     </span>
   );
 }
@@ -151,13 +155,26 @@ export function CarePulsePatientApp() {
   )?.id);
 
   const current = activeView === "account" ? null : heading[activeView];
+  const notifications = usePatientNotifications(session?.user.id);
+  const linked = record.status === "linked" ? record : null;
+  const unreadCount = notifications.status === "ready" ? notifications.notifications.filter((item) => !item.is_read).length : 0;
+  const today = localDateKey();
+  const nextAppointment = linked?.appointments
+    .filter((appointment) => isUpcomingAppointment(appointment.appointment_date, today))
+    .sort((a, b) => `${a.appointment_date} ${a.appointment_time}`.localeCompare(`${b.appointment_date} ${b.appointment_time}`))[0];
+  const liveLabel = activeView === "doctors"
+    ? directory.status === "ready" ? "CLINIC DIRECTORY" : null
+    : (activeView === "home" || activeView === "appointments") && linked
+      ? "CLINIC RECORD"
+      : activeView === "notifications" && notifications.status === "ready" ? "CLINIC UPDATES" : null;
+  const patientInitials = linked?.patient.full_name ? doctorInitials(linked.patient.full_name) : "PA";
 
   return (
     <div className="min-h-screen bg-care-paper text-care-ink">
       {bannerOpen && (
         <div className="flex min-h-8 items-center justify-center gap-2 bg-care-deep px-10 py-1.5 text-center text-[11px] font-medium text-primary-foreground">
           <span className="size-1.5 shrink-0 rounded-full bg-care-amber" />
-          Preview content is sample-only · Sign in to view your clinic directory
+          {linked ? "Connected to your clinic record · Screening remains unavailable" : "Preview content is sample-only · Sign in to view your clinic directory"}
           <Button variant="ghost" size="icon" aria-label="Dismiss preview notice" onClick={() => setBannerOpen(false)} className="absolute right-2 h-6 w-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
             <X className="size-3" />
           </Button>
@@ -176,14 +193,14 @@ export function CarePulsePatientApp() {
               <Button key={id} variant="ghost" onClick={() => go(id)} aria-current={activeView === id ? "page" : undefined}
                 className={`w-full justify-start gap-3 rounded-md px-3 text-sm font-medium ${activeView === id ? "bg-care-mist text-care-deep hover:bg-care-mist" : "text-muted-foreground"}`}>
                 <Icon className="size-[17px]" />{label}
-                {id === "notifications" && <span className="ml-auto size-2 rounded-full bg-care-teal" />}
+                {id === "notifications" && unreadCount > 0 && <span className="ml-auto size-2 rounded-full bg-care-teal" aria-label={`${unreadCount} unread`} />}
               </Button>
             ))}
           </nav>
           <div className="mt-auto border-t border-care-line pt-4">
             <Button variant="ghost" onClick={() => go("account")} className="h-auto w-full justify-start gap-3 rounded-md px-2 py-2 text-left">
-              <Avatar className="size-9 rounded-md bg-care-panel"><AvatarFallback className="rounded-md bg-care-panel text-xs font-semibold text-care-deep">PA</AvatarFallback></Avatar>
-              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-care-ink">Patient account</span><span className="block truncate text-xs text-muted-foreground">{session?.user.email ?? "Sign in"}</span></span>
+              <Avatar className="size-9 rounded-md bg-care-panel"><AvatarFallback className="rounded-md bg-care-panel text-xs font-semibold text-care-deep">{patientInitials}</AvatarFallback></Avatar>
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-care-ink">{linked?.patient.full_name ?? "Patient account"}</span><span className="block truncate text-xs text-muted-foreground">{session?.user.email ?? "Sign in"}</span></span>
               <ChevronRight className="size-4 text-muted-foreground" />
             </Button>
           </div>
@@ -197,9 +214,9 @@ export function CarePulsePatientApp() {
               <span className="hidden text-sm text-muted-foreground sm:block">Patient care</span>
             </div>
             <div className="flex items-center gap-2.5">
-              <SampleLabel liveDirectory={activeView === "doctors" && directory.status === "ready"} />
-              <Button variant="ghost" size="icon" aria-label="View notifications" onClick={() => go("notifications")} className="relative"><Bell className="size-[18px]" /><span className="absolute right-2 top-2 size-1.5 rounded-full bg-care-teal ring-2 ring-background" /></Button>
-              <Button variant="ghost" onClick={() => go("account")} aria-label="Patient account" className="size-9 rounded-md p-0"><Avatar className="size-8 rounded-md bg-care-panel"><AvatarFallback className="rounded-md bg-care-panel text-xs font-semibold text-care-deep">PA</AvatarFallback></Avatar></Button>
+              <SampleLabel liveLabel={liveLabel} />
+              <Button variant="ghost" size="icon" aria-label="View notifications" onClick={() => go("notifications")} className="relative"><Bell className="size-[18px]" />{unreadCount > 0 && <span className="absolute right-2 top-2 size-1.5 rounded-full bg-care-teal ring-2 ring-background" />}</Button>
+              <Button variant="ghost" onClick={() => go("account")} aria-label="Patient account" className="size-9 rounded-md p-0"><Avatar className="size-8 rounded-md bg-care-panel"><AvatarFallback className="rounded-md bg-care-panel text-xs font-semibold text-care-deep">{patientInitials}</AvatarFallback></Avatar></Button>
             </div>
           </header>
 
@@ -208,7 +225,7 @@ export function CarePulsePatientApp() {
           <main className="mx-auto max-w-[1140px] px-4 pb-28 pt-7 sm:px-7 md:pb-12 md:pt-9 lg:px-10">
             {current && <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div><p className="text-[10px] font-semibold text-care-teal">{current.eyebrow}</p><h1 className="mt-1 font-display text-[27px] font-semibold leading-tight tracking-tight text-care-ink sm:text-[32px]">{current.title}</h1></div>
-              <Badge variant="outline" className="gap-1.5 border-care-line bg-background text-[10px] font-medium text-muted-foreground"><span className={`size-1.5 rounded-full ${activeView === "doctors" ? "bg-care-teal" : "bg-care-amber"}`} /> {activeView === "doctors" ? "CLINIC DIRECTORY" : "DEMO DATA"}</Badge>
+              <Badge variant="outline" className="gap-1.5 border-care-line bg-background text-[10px] font-medium text-muted-foreground"><span className={`size-1.5 rounded-full ${liveLabel || activeView === "doctors" ? "bg-care-teal" : "bg-care-amber"}`} /> {liveLabel ?? (activeView === "doctors" ? "CLINIC DIRECTORY" : "DEMO DATA")}</Badge>
             </div>}
 
             {activeView === "home" && <div className="space-y-7">
@@ -221,13 +238,14 @@ export function CarePulsePatientApp() {
                   <p className="mt-2 max-w-[335px] text-sm leading-relaxed text-primary-foreground/80">Find a doctor, keep visits together, and take your next step at your own pace.</p>
                   <Button onClick={bookFirstListedDoctor} className="mt-5 gap-2 bg-primary-foreground text-care-deep hover:bg-primary-foreground/90">Find a doctor <ArrowRight className="size-4" /></Button>
                 </div>
-                <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full border border-primary-foreground/30 bg-care-deep/60 px-2.5 py-1 text-[9px] font-medium text-primary-foreground"><span className="size-1.5 rounded-full bg-care-amber" /> SAMPLE APPOINTMENT</div>
+                {!linked && <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full border border-primary-foreground/30 bg-care-deep/60 px-2.5 py-1 text-[9px] font-medium text-primary-foreground"><span className="size-1.5 rounded-full bg-care-amber" /> SAMPLE APPOINTMENT</div>}
               </section>
 
               <div className="grid gap-7 xl:grid-cols-[1.4fr_0.95fr]">
                 <div className="space-y-7">
                   <section>
-                    <SectionTitle title="Your upcoming visit" detail="A sample appointment for preview only." action={<Button variant="link" onClick={() => go("appointments")} className="h-8 gap-1 p-0 text-xs text-care-teal">All appointments <ArrowRight className="size-3.5" /></Button>} />
+                    <SectionTitle title="Your upcoming visit" detail={linked ? "From your clinic record." : "A sample appointment for preview only."} action={<Button variant="link" onClick={() => go("appointments")} className="h-8 gap-1 p-0 text-xs text-care-teal">All appointments <ArrowRight className="size-3.5" /></Button>} />
+                    {linked ? <LiveUpcomingVisit appointment={nextAppointment} hasPass={Boolean(nextAppointment && linked.passes.some((pass) => pass.appointment_id === nextAppointment.id && isPassActive(pass.expires_at)))} clinicAddress={linked.clinic?.address ?? null} onOpen={() => go("appointments")} /> : <>
                     <article className="overflow-hidden rounded-md border border-care-line bg-background">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-care-line bg-care-panel/70 px-4 py-2.5">
                         <span className="flex items-center gap-2 text-xs font-semibold text-care-deep"><span className="size-2 rounded-full bg-care-amber" /> SAMPLE PREVIEW</span><span className="text-xs text-muted-foreground">Request not submitted</span>
@@ -240,6 +258,7 @@ export function CarePulsePatientApp() {
                         <Button onClick={() => go("appointments")} variant="outline" size="sm" className="gap-2 sm:self-center">View appointment <ArrowRight className="size-3.5" /></Button>
                       </div>
                     </article>
+                    </>}
                   </section>
 
                   <section>
@@ -269,9 +288,11 @@ export function CarePulsePatientApp() {
                     </button>
                   </section>
                   <section className="border-t border-care-line pt-5">
+                    {linked ? <LiveClinicHours clinic={linked.clinic} /> : <>
                     <div className="mb-3 flex items-center gap-2"><Clock3 className="size-4 text-care-teal" /><h2 className="text-sm font-semibold">Clinic hours</h2><Badge variant="outline" className="ml-auto border-care-line text-[9px] text-muted-foreground">SAMPLE</Badge></div>
                     <p className="text-xs text-muted-foreground">Monday – Friday <span className="float-right font-medium text-care-ink">8:00 AM – 5:00 PM</span></p>
                     <p className="mt-2 text-xs text-muted-foreground">Saturday <span className="float-right font-medium text-care-ink">9:00 AM – 1:00 PM</span></p>
+                    </>}
                   </section>
                 </div>
               </div>
@@ -291,8 +312,8 @@ export function CarePulsePatientApp() {
             </div>}
 
             {activeView === "appointments" && <div className="space-y-5">
-              <section className="flex flex-wrap items-center justify-between gap-3 border-b border-care-line pb-4"><p className="text-sm text-muted-foreground">Sample appointments · no booking information is stored.</p><div className="flex gap-1 rounded-md bg-muted p-1"><Button size="sm" variant={appointmentTab === "upcoming" ? "default" : "ghost"} onClick={() => setAppointmentTab("upcoming")} className="h-8 px-3 text-xs">Upcoming</Button><Button size="sm" variant={appointmentTab === "past" ? "default" : "ghost"} onClick={() => setAppointmentTab("past")} className="h-8 px-3 text-xs">Past visits</Button></div></section>
-              {record.status === "linked" ? <LiveAppointments record={record} tab={appointmentTab} /> : appointmentTab === "upcoming" ? <article className="max-w-2xl overflow-hidden rounded-md border border-care-line bg-background"><div className="flex items-center justify-between gap-2 border-b border-care-line bg-care-panel/60 px-4 py-3"><span className="flex items-center gap-2 text-xs font-semibold text-care-deep"><span className="size-2 rounded-full bg-care-amber" /> EXAMPLE REQUEST</span><Badge variant="outline" className="border-care-line bg-background text-[10px]">Not submitted</Badge></div><div className="p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-display text-xl font-semibold">Friday, November 13</p><p className="mt-1 text-sm text-muted-foreground">11:30 AM · Family medicine</p></div><span className="grid size-11 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-5" /></span></div><div className="mt-5 space-y-3 border-t border-care-line pt-4 text-sm"><p className="flex items-center gap-2"><Stethoscope className="size-4 text-care-teal" />Doctor assigned on clinic record</p><p className="flex items-center gap-2"><MapPin className="size-4 text-care-teal" />Clinic location · sample only</p></div><div className="mt-5 border-t border-care-line pt-4"><Button onClick={() => go("doctors")} variant="outline" size="sm" className="gap-2"><Plus className="size-3.5" /> Explore clinic directory</Button><p className="mt-3 text-[11px] text-muted-foreground">Appointment passes are unavailable until the clinic connection is configured.</p></div></div></article> : <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-muted text-muted-foreground"><FileHeart className="size-[18px]" /></span><div><p className="text-sm font-semibold">Annual wellness visit</p><p className="mt-1 text-xs text-muted-foreground">Sample history · Tuesday, September 8</p></div><span className="ml-auto text-xs text-muted-foreground">Example only</span></div></div>}
+              <section className="flex flex-wrap items-center justify-between gap-3 border-b border-care-line pb-4"><p className="text-sm text-muted-foreground">{linked ? "Appointments booked for you by your clinic." : "Sample appointments · no booking information is stored."}</p><div className="flex gap-1 rounded-md bg-muted p-1"><Button size="sm" variant={appointmentTab === "upcoming" ? "default" : "ghost"} onClick={() => setAppointmentTab("upcoming")} className="h-8 px-3 text-xs">Upcoming</Button><Button size="sm" variant={appointmentTab === "past" ? "default" : "ghost"} onClick={() => setAppointmentTab("past")} className="h-8 px-3 text-xs">Past visits</Button></div></section>
+              {record.status === "linked" ? <LiveAppointments record={record} tab={appointmentTab} today={today} /> : appointmentTab === "upcoming" ? <article className="max-w-2xl overflow-hidden rounded-md border border-care-line bg-background"><div className="flex items-center justify-between gap-2 border-b border-care-line bg-care-panel/60 px-4 py-3"><span className="flex items-center gap-2 text-xs font-semibold text-care-deep"><span className="size-2 rounded-full bg-care-amber" /> EXAMPLE REQUEST</span><Badge variant="outline" className="border-care-line bg-background text-[10px]">Not submitted</Badge></div><div className="p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-display text-xl font-semibold">Friday, November 13</p><p className="mt-1 text-sm text-muted-foreground">11:30 AM · Family medicine</p></div><span className="grid size-11 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-5" /></span></div><div className="mt-5 space-y-3 border-t border-care-line pt-4 text-sm"><p className="flex items-center gap-2"><Stethoscope className="size-4 text-care-teal" />Doctor assigned on clinic record</p><p className="flex items-center gap-2"><MapPin className="size-4 text-care-teal" />Clinic location · sample only</p></div><div className="mt-5 border-t border-care-line pt-4"><Button onClick={() => go("doctors")} variant="outline" size="sm" className="gap-2"><Plus className="size-3.5" /> Explore clinic directory</Button><p className="mt-3 text-[11px] text-muted-foreground">Appointment passes are unavailable until the clinic connection is configured.</p></div></div></article> : <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-muted text-muted-foreground"><FileHeart className="size-[18px]" /></span><div><p className="text-sm font-semibold">Annual wellness visit</p><p className="mt-1 text-xs text-muted-foreground">Sample history · Tuesday, September 8</p></div><span className="ml-auto text-xs text-muted-foreground">Example only</span></div></div>}
             </div>}
 
             {activeView === "assistant" && <div className="max-w-2xl">
@@ -302,28 +323,118 @@ export function CarePulsePatientApp() {
               </section>
             </div>}
 
-            {activeView === "notifications" && <div className="max-w-2xl"><p className="mb-5 text-sm text-muted-foreground">Sample updates only · no messages from a live clinic.</p><div className="divide-y divide-care-line rounded-md border border-care-line bg-background px-4"><article className="flex gap-3 py-4"><span className="grid size-9 shrink-0 place-items-center rounded-md bg-care-panel text-care-teal"><CalendarDays className="size-4" /></span><div><p className="text-sm font-semibold">Your appointment is confirmed <Badge variant="outline" className="ml-1 border-care-line text-[9px] text-muted-foreground">SAMPLE</Badge></p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Sample update for Friday, November 13 at 11:30 AM.</p><p className="mt-2 text-[10px] text-muted-foreground">Example · 2 days ago</p></div></article><article className="flex gap-3 py-4"><span className="grid size-9 shrink-0 place-items-center rounded-md bg-secondary text-primary"><BadgeCheck className="size-4" /></span><div><p className="text-sm font-semibold">Welcome to CarePulse</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Explore the app in sample mode while the clinic connection is being prepared.</p><p className="mt-2 text-[10px] text-muted-foreground">Example · Last week</p></div></article></div></div>}
+            {activeView === "notifications" && (session ? <LiveNotifications state={notifications} /> : <div className="max-w-2xl"><p className="mb-5 text-sm text-muted-foreground">Sample updates only · no messages from a live clinic.</p><div className="divide-y divide-care-line rounded-md border border-care-line bg-background px-4"><article className="flex gap-3 py-4"><span className="grid size-9 shrink-0 place-items-center rounded-md bg-care-panel text-care-teal"><CalendarDays className="size-4" /></span><div><p className="text-sm font-semibold">Your appointment is confirmed <Badge variant="outline" className="ml-1 border-care-line text-[9px] text-muted-foreground">SAMPLE</Badge></p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Sample update for Friday, November 13 at 11:30 AM.</p><p className="mt-2 text-[10px] text-muted-foreground">Example · 2 days ago</p></div></article><article className="flex gap-3 py-4"><span className="grid size-9 shrink-0 place-items-center rounded-md bg-secondary text-primary"><BadgeCheck className="size-4" /></span><div><p className="text-sm font-semibold">Welcome to CarePulse</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Explore the app in sample mode while the clinic connection is being prepared.</p><p className="mt-2 text-[10px] text-muted-foreground">Example · Last week</p></div></article></div></div>)}
 
             {activeView === "account" && <AccountScreen accountView={accountView} onSetView={setAccountView} session={session} record={record} refreshRecord={refreshRecord} onAccountLinked={() => setDirectoryRefreshToken((token) => token + 1)} />}
           </main>
 
-          <footer className="hidden border-t border-care-line px-8 py-4 text-center text-[10px] text-muted-foreground md:block">CarePulse · Sample preview · Not for clinical use</footer>
+          <footer className="hidden border-t border-care-line px-8 py-4 text-center text-[10px] text-muted-foreground md:block">{linked ? "CarePulse · Not for emergencies · Contact your clinic for urgent care" : "CarePulse · Sample preview · Not for clinical use"}</footer>
         </div>
       </div>
 
       <nav aria-label="Bottom navigation" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-care-line bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur md:hidden">
         {navigation.filter((item) => item.id !== "notifications").map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" onClick={() => go(id)} aria-current={activeView === id ? "page" : undefined} className={`flex h-[58px] flex-col gap-1 rounded-none px-0 text-[10px] ${activeView === id ? "text-care-teal" : "text-muted-foreground"}`}><Icon className="size-[18px]" /><span>{id === "appointments" ? "Visits" : id === "assistant" ? "Care" : id === "doctors" ? "Doctors" : "Home"}</span></Button>)}
-        <Button variant="ghost" onClick={() => go("notifications")} aria-current={activeView === "notifications" ? "page" : undefined} className={`relative flex h-[58px] flex-col gap-1 rounded-none px-0 text-[10px] ${activeView === "notifications" ? "text-care-teal" : "text-muted-foreground"}`}><Bell className="size-[18px]" /><span>Inbox</span><span className="absolute right-[calc(50%-15px)] top-2 size-1.5 rounded-full bg-care-teal" /></Button>
+        <Button variant="ghost" onClick={() => go("notifications")} aria-current={activeView === "notifications" ? "page" : undefined} className={`relative flex h-[58px] flex-col gap-1 rounded-none px-0 text-[10px] ${activeView === "notifications" ? "text-care-teal" : "text-muted-foreground"}`}><Bell className="size-[18px]" /><span>Inbox</span>{unreadCount > 0 && <span className="absolute right-[calc(50%-15px)] top-2 size-1.5 rounded-full bg-care-teal" />}</Button>
       </nav>
     </div>
   );
 }
 
-function LiveAppointments({ record, tab }: { record: Extract<PatientRecordState, { status: "linked" }>; tab: "upcoming" | "past" }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const list = record.appointments.filter((a) => (tab === "upcoming" ? a.appointment_date >= today : a.appointment_date < today));
+function formatVisitDate(date: string) {
+  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+}
+
+function formatVisitTime(time: string) {
+  const [hours = "0", minutes = "00"] = time.split(":");
+  return new Date(2000, 0, 1, Number(hours), Number(minutes)).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function LiveUpcomingVisit({ appointment, hasPass, clinicAddress, onOpen }: { appointment: PatientAppointment | undefined; hasPass: boolean; clinicAddress: string | null; onOpen: () => void }) {
+  if (!appointment) return <div className="rounded-md border border-care-line bg-background px-4 py-5 text-sm text-muted-foreground">No upcoming appointments on your clinic record. Your clinic will add visits here once they’re booked.</div>;
+  return (
+    <article className="overflow-hidden rounded-md border border-care-line bg-background">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-care-line bg-care-panel/70 px-4 py-2.5">
+        <span className="flex items-center gap-2 text-xs font-semibold capitalize text-care-deep"><span className="size-2 rounded-full bg-care-teal" /> {appointment.status ?? "Pending"}</span><span className="text-xs text-muted-foreground">{hasPass ? "Appointment pass ready" : "Pass not issued yet"}</span>
+      </div>
+      <div className="grid gap-5 p-4 sm:grid-cols-[1fr_auto] sm:items-center sm:p-5">
+        <div className="flex items-start gap-3">
+          <div className="grid size-11 shrink-0 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-[21px]" /></div>
+          <div><p className="text-sm font-semibold text-care-ink">{formatVisitDate(appointment.appointment_date)}</p><p className="mt-1 text-xs text-muted-foreground">{formatVisitTime(appointment.appointment_time)}{appointment.doctor?.specialization ? ` · ${appointment.doctor.specialization}` : ""}</p><p className="mt-2 text-xs text-care-ink">{appointment.doctor?.full_name ?? "Doctor to be assigned"}{clinicAddress ? ` · ${clinicAddress}` : ""}</p></div>
+        </div>
+        <Button onClick={onOpen} variant="outline" size="sm" className="gap-2 sm:self-center">View appointment <ArrowRight className="size-3.5" /></Button>
+      </div>
+    </article>
+  );
+}
+
+function openingHoursRows(hours: Json | null): [string, string][] {
+  if (!hours || typeof hours !== "object" || Array.isArray(hours)) return [];
+  return Object.entries(hours).flatMap(([day, value]): [string, string][] => {
+    if (typeof value === "string" && value.trim()) return [[day, value]];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const open = value["open"];
+      const close = value["close"];
+      if (typeof open === "string" && typeof close === "string") return [[day, `${open} – ${close}`]];
+      if (value["closed"] === true) return [[day, "Closed"]];
+    }
+    return [];
+  });
+}
+
+function LiveClinicHours({ clinic }: { clinic: PatientClinic | null }) {
+  const rows = openingHoursRows(clinic?.opening_hours ?? null);
+  return (
+    <>
+      <div className="mb-3 flex items-center gap-2"><Clock3 className="size-4 text-care-teal" /><h2 className="text-sm font-semibold">Clinic hours</h2><Badge variant="outline" className="ml-auto border-care-line text-[9px] text-muted-foreground">CLINIC RECORD</Badge></div>
+      {clinic?.name && <p className="mb-2 text-xs font-medium text-care-ink">{clinic.name}</p>}
+      {rows.length ? rows.map(([day, value]) => <p key={day} className="mt-2 text-xs capitalize text-muted-foreground first:mt-0">{day} <span className="float-right font-medium normal-case text-care-ink">{value}</span></p>) : <p className="text-xs text-muted-foreground">Your clinic hasn’t listed its opening hours yet.</p>}
+      {clinic?.phone && <p className="mt-3 text-xs text-muted-foreground">Phone <a href={`tel:${clinic.phone}`} className="float-right font-medium text-care-teal">{clinic.phone}</a></p>}
+    </>
+  );
+}
+
+function AppointmentPassCard({ pass }: { pass: PatientPass }) {
+  const [showCode, setShowCode] = useState(false);
+  const qrValue = appointmentPassQrValue(pass.reference_code, pass.qr_code);
+  const active = isPassActive(pass.expires_at);
+  return (
+    <div className="mt-3 border-t border-care-line pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><p className="text-[10px] font-semibold text-muted-foreground">APPOINTMENT PASS</p><p className="mt-0.5 font-mono text-sm font-semibold tracking-wider text-care-deep">{pass.reference_code}</p>{pass.expires_at && <p className="mt-0.5 text-[11px] text-muted-foreground">{active ? "Valid until" : "Expired"} {new Date(pass.expires_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>}</div>
+        <div className="flex gap-2">
+          {pass.pdf_url && <Button asChild variant="ghost" size="sm" className="text-xs"><a href={pass.pdf_url} target="_blank" rel="noreferrer">Download</a></Button>}
+          {qrValue && active && <Button variant="outline" size="sm" className="text-xs" onClick={() => setShowCode((open) => !open)}>{showCode ? "Hide code" : "Show code"}</Button>}
+        </div>
+      </div>
+      {showCode && qrValue && <div className="mt-3 flex flex-col items-center gap-2 rounded-md border border-care-line bg-background p-4"><QRCodeSVG value={qrValue} size={168} level="M" aria-label={`QR code for appointment pass ${pass.reference_code}`} /><p className="text-center text-[11px] text-muted-foreground">Show this code at the clinic front desk.</p></div>}
+    </div>
+  );
+}
+
+function LiveAppointments({ record, tab, today }: { record: Extract<PatientRecordState, { status: "linked" }>; tab: "upcoming" | "past"; today: string }) {
+  const list = record.appointments
+    .filter((a) => (tab === "upcoming" ? isUpcomingAppointment(a.appointment_date, today) : !isUpcomingAppointment(a.appointment_date, today)))
+    .sort((a, b) => (tab === "upcoming" ? 1 : -1) * `${a.appointment_date} ${a.appointment_time}`.localeCompare(`${b.appointment_date} ${b.appointment_time}`));
   if (list.length === 0) return <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-6 text-sm text-muted-foreground">No {tab === "upcoming" ? "upcoming" : "past"} appointments on your clinic record.</div>;
-  return <div className="max-w-2xl space-y-3">{list.map((a) => <div key={a.id} className="rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-[18px]" /></span><div className="min-w-0"><p className="text-sm font-semibold">{new Date(`${a.appointment_date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · {a.appointment_time.slice(0, 5)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{a.doctor?.full_name ?? "Doctor to be assigned"}{a.reason ? ` · ${a.reason}` : ""}</p></div><Badge variant="outline" className="ml-auto border-care-line text-[10px] capitalize">{a.status ?? "pending"}</Badge></div></div>)}</div>;
+  return <div className="max-w-2xl space-y-3">{list.map((a) => {
+    const pass = tab === "upcoming" ? record.passes.find((item) => item.appointment_id === a.id) : undefined;
+    return <div key={a.id} className="rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-[18px]" /></span><div className="min-w-0"><p className="text-sm font-semibold">{formatVisitDate(a.appointment_date)} · {formatVisitTime(a.appointment_time)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{a.doctor?.full_name ?? "Doctor to be assigned"}{a.reason ? ` · ${a.reason}` : ""}</p></div><Badge variant="outline" className="ml-auto border-care-line text-[10px] capitalize">{a.status ?? "pending"}</Badge></div>{pass && <AppointmentPassCard pass={pass} />}</div>;
+  })}</div>;
+}
+
+function LiveNotifications({ state }: { state: PatientNotificationsState }) {
+  const intro = state.status === "ready" ? "Updates sent to your account by your clinic." : state.status === "loading" ? "Loading your clinic updates…" : state.status === "error" ? state.message : "Sign in to see clinic updates.";
+  return (
+    <div className="max-w-2xl">
+      <p className="mb-5 text-sm text-muted-foreground">{intro}</p>
+      {state.status === "ready" && (state.notifications.length ? <div className="divide-y divide-care-line rounded-md border border-care-line bg-background px-4">{state.notifications.map((item) => (
+        <article key={item.id} className="flex gap-3 py-4">
+          <span className={`grid size-9 shrink-0 place-items-center rounded-md ${item.notification_type?.includes("appointment") ? "bg-care-panel text-care-teal" : "bg-secondary text-primary"}`}>{item.notification_type?.includes("appointment") ? <CalendarDays className="size-4" /> : <BadgeCheck className="size-4" />}</span>
+          <div className="min-w-0 flex-1"><p className="text-sm font-semibold">{item.title}{!item.is_read && <span className="ml-2 inline-block size-1.5 rounded-full bg-care-teal align-middle" aria-label="Unread" />}</p><p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{item.message}</p>{item.created_at && <p className="mt-2 text-[10px] text-muted-foreground">{new Date(item.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>}</div>
+        </article>
+      ))}</div> : <div className="rounded-md border border-care-line bg-background px-4 py-6 text-sm text-muted-foreground">No updates from your clinic yet.</div>)}
+    </div>
+  );
 }
 
 function AccountScreen({ accountView, onSetView, session, record, refreshRecord, onAccountLinked }: { accountView: AccountView; onSetView: (view: AccountView) => void; session: Session | null; record: PatientRecordState; refreshRecord: () => void; onAccountLinked: () => void }) {

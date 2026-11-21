@@ -31,4 +31,5 @@ use the editor.
 
 ## CarePulse structure
 - Keep patient-facing views and sample-only state in `src/components/carepulse-patient-app.tsx` so future clinic-data integration can replace sample sources without duplicating navigation.
-- Keep live clinic-directory reads in `src/hooks/use-doctor-directory.ts`; UI views consume only its typed, clinic-scoped directory results.
+- Keep live clinic reads in `src/hooks/` (doctor directory, patient session record, patient notifications); UI views consume only their typed, patient- or clinic-scoped results so security filtering stays in one place.
+- Encode appointment pass QR values only through `src/lib/appointment-pass.ts` so the patient app and clinic scanner stay on one format.
