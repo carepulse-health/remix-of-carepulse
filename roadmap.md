@@ -4,4 +4,5 @@
 - [x] Keep live data/auth/AI integration blocked until the existing clinic database is connected and the screening safety specification is available.
 - [x] Replace patient-facing demo clinicians with protected clinic-directory reads and connect account linking to the approved database function.
 - [x] Verify directory access states and account-link RPC wiring with focused tests; confirm live directory row availability.
-- [ ] Attach a database to this remix and re-apply the approved security migration; until then sign-in, patient linking and the clinic directory cannot be tested end-to-end.
+- [x] Reconnect the original clinic database to this remix (security update confirmed in place).
+- [ ] Test sign-in, patient linking and the doctor list end-to-end with a real patient account (needs a patient to sign in on the preview).
