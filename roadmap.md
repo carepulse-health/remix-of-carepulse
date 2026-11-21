@@ -6,5 +6,5 @@
 - [x] Verify directory access states and account-link RPC wiring with focused tests; confirm live directory row availability.
 - [x] Reconnect the original clinic database to this remix (security update confirmed in place).
 - [x] Show the patient's real upcoming visit, appointment passes (reference + QR), clinic hours and clinic messages once their record is linked.
-- [ ] Confirm the QR format the clinic scanner expects (using CAREPULSE|reference|token for now).
+- [x] Confirm the QR format the clinic scanner expects (CAREPULSE|reference|token).
 - [ ] Test sign-in, patient linking and the doctor list end-to-end with a real patient account (needs a patient to sign in on the preview).
