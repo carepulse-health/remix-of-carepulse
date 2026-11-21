@@ -49,4 +49,14 @@ describe("appointment details", () => {
     expect(screen.queryByText("CP-ABC123DEF456")).toBeNull();
     expect(screen.getByText("Your appointment pass will appear once the clinic confirms your visit.")).toBeTruthy();
   });
+
+  it("shows the checked-in message and hides the pass and QR code after check-in", () => {
+    const { container } = renderDetails({ status: "checked_in" }, pass);
+    expect(screen.getByText("Checked in")).toBeTruthy();
+    expect(screen.getByText("You're checked in — please wait to be called.")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: /qr code for appointment pass/i })).toBeNull();
+    expect(screen.queryByText("CP-ABC123DEF456")).toBeNull();
+    expect(screen.queryByRole("button", { name: /download pass/i })).toBeNull();
+    expect(container.innerHTML).not.toContain(SECRET);
+  });
 });

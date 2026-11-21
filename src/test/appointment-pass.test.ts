@@ -24,7 +24,7 @@ describe("appointment passes", () => {
   });
 });
 
-import { isPassValid, passDownloadFileName } from "@/lib/appointment-pass";
+import { appointmentStatusLabel, isPassValid, passDownloadFileName } from "@/lib/appointment-pass";
 
 describe("appointment pass validity", () => {
   const now = new Date("2026-11-21T12:00:00Z");
@@ -44,5 +44,24 @@ describe("appointment pass validity", () => {
 
   it("names the downloaded pass by its reference, never its token", () => {
     expect(passDownloadFileName("CP-ABC123")).toBe("carepulse-pass-CP-ABC123.png");
+  });
+});
+
+describe("checked-in appointments", () => {
+  it("displays checked_in as Checked in", () => {
+    expect(appointmentStatusLabel("checked_in")).toBe("Checked in");
+  });
+
+  it("keeps every existing appointment status label unchanged", () => {
+    for (const status of ["pending", "confirmed", "cancelled", "completed", "rescheduled"]) {
+      expect(appointmentStatusLabel(status)).toBe(status);
+    }
+  });
+
+  it("hides the pass after check-in while keeping confirmed passes valid", () => {
+    const now = new Date("2026-11-21T12:00:00Z");
+    const pass = { qr_code: "tok_abc", expires_at: null };
+    expect(isPassValid(pass, "checked_in", now)).toBe(false);
+    expect(isPassValid(pass, "confirmed", now)).toBe(true);
   });
 });

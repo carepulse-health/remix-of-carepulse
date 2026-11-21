@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { requestPatientAccountLink, usePatientSession, type PatientAppointment, type PatientClinic, type PatientPass, type PatientRecordState } from "@/hooks/use-patient-session";
 import { useDoctorDirectory } from "@/hooks/use-doctor-directory";
 import { usePatientNotifications, type PatientNotificationsState } from "@/hooks/use-patient-notifications";
-import { appointmentPassQrValue, isPassActive, isPassValid, isUpcomingAppointment, localDateKey } from "@/lib/appointment-pass";
+import { appointmentPassQrValue, appointmentStatusLabel, isCheckedInStatus, isPassActive, isPassValid, isUpcomingAppointment, localDateKey } from "@/lib/appointment-pass";
 import { downloadAppointmentPass } from "@/lib/download-appointment-pass";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 import type { Json } from "@/integrations/supabase/types";
@@ -360,10 +360,11 @@ function formatVisitTime(time: string) {
 
 function LiveUpcomingVisit({ appointment, hasPass, clinicAddress, onOpen }: { appointment: PatientAppointment | undefined; hasPass: boolean; clinicAddress: string | null; onOpen: () => void }) {
   if (!appointment) return <div className="rounded-md border border-care-line bg-background px-4 py-5 text-sm text-muted-foreground">No upcoming appointments on your clinic record. Your clinic will add visits here once they’re booked.</div>;
+  const checkedIn = isCheckedInStatus(appointment.status);
   return (
     <article className="overflow-hidden rounded-md border border-care-line bg-background">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-care-line bg-care-panel/70 px-4 py-2.5">
-        <span className="flex items-center gap-2 text-xs font-semibold capitalize text-care-deep"><span className="size-2 rounded-full bg-care-teal" /> {appointment.status ?? "Pending"}</span><span className="text-xs text-muted-foreground">{hasPass ? "Appointment pass ready" : "Pass not issued yet"}</span>
+        <span className="flex items-center gap-2 text-xs font-semibold capitalize text-care-deep"><span className="size-2 rounded-full bg-care-teal" /> {appointmentStatusLabel(appointment.status)}</span><span className="text-xs text-muted-foreground">{checkedIn ? "You're checked in — please wait to be called." : hasPass ? "Appointment pass ready" : "Pass not issued yet"}</span>
       </div>
       <div className="grid gap-5 p-4 sm:grid-cols-[1fr_auto] sm:items-center sm:p-5">
         <div className="flex items-start gap-3">
@@ -415,6 +416,15 @@ function AppointmentPassPanel({ appointment, pass, clinic, onRefresh }: { appoin
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const valid = isPassValid(pass, appointment.status);
   const qrValue = valid && pass ? appointmentPassQrValue(pass.reference_code, pass.qr_code) : null;
+
+  if (isCheckedInStatus(appointment.status)) {
+    return (
+      <div role="status" className="flex items-start gap-3 rounded-md border border-care-line bg-care-panel/60 p-5">
+        <BadgeCheck className="mt-0.5 size-5 shrink-0 text-care-teal" />
+        <p className="text-sm font-medium text-care-ink">You're checked in — please wait to be called.</p>
+      </div>
+    );
+  }
 
   if (!pass || !qrValue) {
     const expired = Boolean(pass && !isPassActive(pass.expires_at));
@@ -479,7 +489,7 @@ export function AppointmentDetails({ appointment, pass, clinic, onBack, onRefres
       <article className="overflow-hidden rounded-md border border-care-line bg-background">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-care-line bg-care-panel/60 p-5">
           <div><p className="text-[10px] font-semibold text-care-teal">APPOINTMENT</p><h2 className="mt-1 font-display text-xl font-semibold text-care-ink">{formatVisitDate(appointment.appointment_date)}</h2><p className="mt-1 text-sm text-muted-foreground">{formatVisitTime(appointment.appointment_time)}</p></div>
-          <Badge variant="outline" className="border-care-line bg-background capitalize">{appointment.status ?? "pending"}</Badge>
+          <Badge variant="outline" className="border-care-line bg-background capitalize">{appointmentStatusLabel(appointment.status)}</Badge>
         </div>
         <dl className="divide-y divide-care-line/70 px-5">
           {rows.map(([label, value]) => <div key={label} className="flex justify-between gap-4 py-3 text-sm"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium text-care-ink">{value}</dd></div>)}
@@ -505,8 +515,9 @@ function LiveAppointments({ record, tab, today, onOpen }: { record: Extract<Pati
     .sort((a, b) => (tab === "upcoming" ? 1 : -1) * `${a.appointment_date} ${a.appointment_time}`.localeCompare(`${b.appointment_date} ${b.appointment_time}`));
   if (list.length === 0) return <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-6 text-sm text-muted-foreground">No {tab === "upcoming" ? "upcoming" : "past"} appointments on your clinic record.</div>;
   return <div className="max-w-2xl space-y-3">{list.map((a) => {
+    const checkedIn = isCheckedInStatus(a.status);
     const hasPass = tab === "upcoming" && isPassValid(record.passes.find((item) => item.appointment_id === a.id), a.status);
-    return <button key={a.id} type="button" onClick={() => onOpen(a.id)} aria-label={`View appointment on ${formatVisitDate(a.appointment_date)} at ${formatVisitTime(a.appointment_time)}`} className="group block w-full rounded-md border border-care-line bg-background px-4 py-3 text-left transition-colors hover:bg-care-mist/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-[18px]" /></span><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{formatVisitDate(a.appointment_date)} · {formatVisitTime(a.appointment_time)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{a.doctor?.full_name ?? "Doctor to be assigned"}{a.reason ? ` · ${a.reason}` : ""}</p>{hasPass && <p className="mt-1 text-[11px] font-medium text-care-teal">Appointment pass ready</p>}</div><Badge variant="outline" className="border-care-line text-[10px] capitalize">{a.status ?? "pending"}</Badge><ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div></button>;
+    return <button key={a.id} type="button" onClick={() => onOpen(a.id)} aria-label={`View appointment on ${formatVisitDate(a.appointment_date)} at ${formatVisitTime(a.appointment_time)}`} className="group block w-full rounded-md border border-care-line bg-background px-4 py-3 text-left transition-colors hover:bg-care-mist/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-[18px]" /></span><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{formatVisitDate(a.appointment_date)} · {formatVisitTime(a.appointment_time)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{a.doctor?.full_name ?? "Doctor to be assigned"}{a.reason ? ` · ${a.reason}` : ""}</p>{checkedIn && <p className="mt-1 text-[11px] font-medium text-care-teal">You're checked in — please wait to be called.</p>}{hasPass && <p className="mt-1 text-[11px] font-medium text-care-teal">Appointment pass ready</p>}</div><Badge variant="outline" className="border-care-line text-[10px] capitalize">{appointmentStatusLabel(a.status)}</Badge><ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div></button>;
   })}</div>;
 }
 

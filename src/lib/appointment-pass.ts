@@ -25,6 +25,15 @@ export function isConfirmedStatus(status: string | null) {
   return (status ?? "").trim().toLowerCase() === "confirmed";
 }
 
+export function isCheckedInStatus(status: string | null) {
+  return (status ?? "").trim().toLowerCase() === "checked_in";
+}
+
+/** Formats the new checked-in status without changing any existing status labels. */
+export function appointmentStatusLabel(status: string | null) {
+  return isCheckedInStatus(status) ? "Checked in" : status ?? "pending";
+}
+
 /**
  * A pass is shown to the patient only when the clinic has confirmed the visit,
  * issued a token for it, and the pass has not expired.
