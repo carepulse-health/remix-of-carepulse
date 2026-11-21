@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { requestPatientAccountLink, usePatientSession, type PatientAppointment, type PatientClinic, type PatientPass, type PatientRecordState } from "@/hooks/use-patient-session";
 import { useDoctorDirectory } from "@/hooks/use-doctor-directory";
@@ -30,6 +30,8 @@ import {
   MapPin,
   Menu,
   MessageCircleHeart,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   ShieldCheck,
@@ -44,17 +46,80 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 type View = "home" | "doctors" | "appointments" | "assistant" | "notifications" | "account";
 type AccountView = "login" | "register" | "forgot";
 
-const navigation: { id: View; label: string; icon: typeof House }[] = [
-  { id: "home", label: "Overview", icon: House },
-  { id: "doctors", label: "Find a doctor", icon: Stethoscope },
+type NavItem = { id: View; label: string; icon: typeof House };
+
+export const primaryNavigation: NavItem[] = [
+  { id: "home", label: "Home", icon: House },
+  { id: "doctors", label: "Find a Doctor", icon: Stethoscope },
   { id: "appointments", label: "Appointments", icon: CalendarDays },
-  { id: "assistant", label: "Care assistant", icon: MessageCircleHeart },
-  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "notifications", label: "Inbox", icon: Bell },
+  { id: "account", label: "Account", icon: UserRound },
 ];
+
+const moreNavigation: NavItem[] = [
+  { id: "assistant", label: "Care assistant", icon: MessageCircleHeart },
+];
+
+const SIDEBAR_STORAGE_KEY = "carepulse.sidebar-collapsed";
+
+export function PatientSidebar({ activeView, onNavigate, unreadCount, collapsed = false, onToggleCollapsed, accountName, accountDetail, initials }: {
+  activeView: View;
+  onNavigate: (view: View) => void;
+  unreadCount: number;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+  accountName: string;
+  accountDetail: string;
+  initials: string;
+}) {
+  const item = ({ id, label, icon: Icon }: NavItem) => {
+    const active = activeView === id;
+    return (
+      <li key={id}>
+        <Button variant="ghost" onClick={() => onNavigate(id)} aria-current={active ? "page" : undefined} title={collapsed ? label : undefined}
+          className={`relative h-10 w-full gap-3 rounded-md text-sm font-medium ${collapsed ? "justify-center px-0" : "justify-start px-3"} ${active ? "bg-care-mist text-care-deep hover:bg-care-mist" : "text-muted-foreground hover:text-care-deep"}`}>
+          {active && <span aria-hidden className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-care-teal" />}
+          <Icon className={`size-[17px] shrink-0 ${active ? "text-care-teal" : ""}`} />
+          <span className={collapsed ? "sr-only" : "truncate"}>{label}</span>
+          {id === "notifications" && unreadCount > 0 && <span className={`${collapsed ? "absolute right-3 top-2" : "ml-auto"} size-2 rounded-full bg-care-teal`} aria-label={`${unreadCount} unread`} />}
+        </Button>
+      </li>
+    );
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className={`flex items-center ${collapsed ? "justify-center" : "justify-between gap-2"}`}>
+        <button className="flex items-center gap-2.5 text-left" onClick={() => onNavigate("home")} aria-label="CarePulse home">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-care-deep text-primary-foreground"><HeartPulse className="size-5" /></span>
+          {!collapsed && <span className="font-display text-[20px] font-bold tracking-tight text-care-deep">carepulse<span className="text-care-teal">.</span></span>}
+        </button>
+      </div>
+      <nav aria-label="Main navigation" className="mt-8 flex-1 overflow-y-auto">
+        {!collapsed && <p className="mb-2 px-3 text-[10px] font-semibold text-muted-foreground">YOUR SPACE</p>}
+        <ul className="space-y-1">{primaryNavigation.map(item)}</ul>
+        {!collapsed ? <p className="mb-2 mt-6 px-3 text-[10px] font-semibold text-muted-foreground">MORE</p> : <div className="my-4 border-t border-care-line" />}
+        <ul className="space-y-1">{moreNavigation.map(item)}</ul>
+      </nav>
+      <div className="mt-4 space-y-2 border-t border-care-line pt-4">
+        <Button variant="ghost" onClick={() => onNavigate("account")} title={collapsed ? accountName : undefined} className={`h-auto w-full gap-3 rounded-md py-2 text-left ${collapsed ? "justify-center px-0" : "justify-start px-2"}`}>
+          <Avatar className="size-9 shrink-0 rounded-md bg-care-panel"><AvatarFallback className="rounded-md bg-care-panel text-xs font-semibold text-care-deep">{initials}</AvatarFallback></Avatar>
+          {collapsed ? <span className="sr-only">{accountName}</span> : <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-care-ink">{accountName}</span><span className="block truncate text-xs text-muted-foreground">{accountDetail}</span></span>}
+        </Button>
+        {onToggleCollapsed && (
+          <Button variant="ghost" size="sm" onClick={onToggleCollapsed} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} className={`w-full gap-2 text-xs text-muted-foreground ${collapsed ? "justify-center px-0" : "justify-start px-3"}`}>
+            {collapsed ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-4" /> Collapse</>}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const heading: Record<Exclude<View, "account">, { title: string; eyebrow: string }> = {
   home: { title: "Your care, at a glance.", eyebrow: "PATIENT HOME" },
@@ -135,6 +200,7 @@ export function CarePulsePatientApp() {
   const [searchTerm, setSearchTerm] = useState("");
   const [bannerOpen, setBannerOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chosenDoctor, setChosenDoctor] = useState<string | null>(null);
   const [appointmentTab, setAppointmentTab] = useState<"upcoming" | "past">("upcoming");
   const [openAppointmentId, setOpenAppointmentId] = useState<string | null>(null);
@@ -145,6 +211,16 @@ export function CarePulsePatientApp() {
   );
   const selectedDoctor = availableDoctors.find((doctor) => doctor.id === chosenDoctor);
   const selectedSchedules = directory.status === "ready" ? directory.schedules.filter((schedule) => schedule.doctor_id === chosenDoctor && schedule.is_available) : [];
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    setSidebarCollapsed(saved === null ? window.innerWidth < 1024 : saved === "true");
+  }, []);
+
+  const toggleSidebar = () => setSidebarCollapsed((value) => {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(!value));
+    return !value;
+  });
 
   const go = (view: View) => {
     setActiveView(view);
@@ -176,61 +252,45 @@ export function CarePulsePatientApp() {
       ? "CLINIC RECORD"
       : activeView === "notifications" && notifications.status === "ready" ? "CLINIC UPDATES" : null;
   const patientInitials = linked?.patient.full_name ? doctorInitials(linked.patient.full_name) : "PA";
+  const accountName = linked?.patient.full_name ?? (session ? "My account" : "Patient account");
+  const accountDetail = session?.user.email ?? "Sign in";
 
   return (
     <div className="min-h-screen bg-care-paper text-care-ink">
-      {bannerOpen && (
-        <div className="flex min-h-8 items-center justify-center gap-2 bg-care-deep px-10 py-1.5 text-center text-[11px] font-medium text-primary-foreground">
-          <span className="size-1.5 shrink-0 rounded-full bg-care-amber" />
-          {linked ? "Connected to your clinic record · Screening remains unavailable" : record.status === "unlinked" ? <>Signed in · Link your clinic record to see your visits <Button variant="link" onClick={() => go("account")} className="h-auto p-0 text-[11px] font-semibold text-primary-foreground underline">Link record</Button></> : "Preview content is sample-only · Sign in to view your clinic directory"}
-          <Button variant="ghost" size="icon" aria-label="Dismiss preview notice" onClick={() => setBannerOpen(false)} className="absolute right-2 h-6 w-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
-            <X className="size-3" />
-          </Button>
-        </div>
-      )}
 
-      <div className="mx-auto flex min-h-[calc(100vh-32px)] max-w-[1440px]">
-        <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col border-r border-care-line/80 bg-background px-5 py-6 lg:flex">
-          <button className="flex items-center gap-2.5 text-left" onClick={() => go("home")} aria-label="CarePulse overview">
-            <span className="grid size-9 place-items-center rounded-md bg-care-deep text-primary-foreground"><HeartPulse className="size-5" /></span>
-            <span className="font-display text-[20px] font-bold tracking-tight text-care-deep">carepulse<span className="text-care-teal">.</span></span>
-          </button>
-          <p className="mb-3 mt-10 px-2 text-[10px] font-semibold text-muted-foreground">YOUR SPACE</p>
-          <nav aria-label="Main navigation" className="space-y-1">
-            {navigation.map(({ id, label, icon: Icon }) => (
-              <Button key={id} variant="ghost" onClick={() => go(id)} aria-current={activeView === id ? "page" : undefined}
-                className={`w-full justify-start gap-3 rounded-md px-3 text-sm font-medium ${activeView === id ? "bg-care-mist text-care-deep hover:bg-care-mist" : "text-muted-foreground"}`}>
-                <Icon className="size-[17px]" />{label}
-                {id === "notifications" && unreadCount > 0 && <span className="ml-auto size-2 rounded-full bg-care-teal" aria-label={`${unreadCount} unread`} />}
-              </Button>
-            ))}
-          </nav>
-          <div className="mt-auto border-t border-care-line pt-4">
-            <Button variant="ghost" onClick={() => go("account")} className="h-auto w-full justify-start gap-3 rounded-md px-2 py-2 text-left">
-              <Avatar className="size-9 rounded-md bg-care-panel"><AvatarFallback className="rounded-md bg-care-panel text-xs font-semibold text-care-deep">{patientInitials}</AvatarFallback></Avatar>
-              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-care-ink">{linked?.patient.full_name ?? "Patient account"}</span><span className="block truncate text-xs text-muted-foreground">{session?.user.email ?? "Sign in"}</span></span>
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </Button>
-          </div>
+      <div className="mx-auto flex min-h-screen max-w-[1440px]">
+        <aside aria-label="Sidebar" className={`sticky top-0 hidden h-screen shrink-0 border-r border-care-line/80 bg-background py-6 transition-[width] duration-200 md:block ${sidebarCollapsed ? "w-[76px] px-3" : "w-[240px] px-4"}`}>
+          <PatientSidebar activeView={activeView} onNavigate={go} unreadCount={unreadCount} collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebar} accountName={accountName} accountDetail={accountDetail} initials={patientInitials} />
         </aside>
 
         <div className="min-w-0 flex-1">
-          <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-care-line/80 bg-background/95 px-4 backdrop-blur md:px-8 lg:px-10">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" aria-label="Open navigation" onClick={() => setMenuOpen((open) => !open)} className="lg:hidden"><Menu className="size-5" /></Button>
-              <button onClick={() => go("home")} className="font-display text-[19px] font-bold tracking-tight text-care-deep lg:hidden">carepulse<span className="text-care-teal">.</span></button>
-              <span className="hidden text-sm text-muted-foreground sm:block">Patient care</span>
+          {bannerOpen && (
+            <div className="relative flex min-h-8 items-center justify-center gap-2 bg-care-deep px-10 py-1.5 text-center text-[11px] font-medium text-primary-foreground">
+              <span className="size-1.5 shrink-0 rounded-full bg-care-amber" />
+              {linked ? "Connected to your clinic record · Screening remains unavailable" : record.status === "unlinked" ? <>Signed in · Link your clinic record to see your visits <Button variant="link" onClick={() => go("account")} className="h-auto p-0 text-[11px] font-semibold text-primary-foreground underline">Link record</Button></> : "Preview content is sample-only · Sign in to view your clinic directory"}
+              <Button variant="ghost" size="icon" aria-label="Dismiss preview notice" onClick={() => setBannerOpen(false)} className="absolute right-2 h-6 w-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                <X className="size-3" />
+              </Button>
             </div>
-            <div className="flex items-center gap-2.5">
-              <SampleLabel liveLabel={liveLabel} />
-              <Button variant="ghost" size="icon" aria-label="View notifications" onClick={() => go("notifications")} className="relative"><Bell className="size-[18px]" />{unreadCount > 0 && <span className="absolute right-2 top-2 size-1.5 rounded-full bg-care-teal ring-2 ring-background" />}</Button>
-              <Button variant="ghost" onClick={() => go("account")} aria-label="Patient account" className="size-9 rounded-md p-0"><Avatar className="size-8 rounded-md bg-care-panel"><AvatarFallback className="rounded-md bg-care-panel text-xs font-semibold text-care-deep">{patientInitials}</AvatarFallback></Avatar></Button>
+          )}
+          <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-care-line/80 bg-background/95 px-3 backdrop-blur md:hidden">
+            <div className="flex items-center gap-1.5">
+              <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Open menu" className="relative"><Menu className="size-5" />{unreadCount > 0 && <span className="absolute right-2 top-2 size-1.5 rounded-full bg-care-teal ring-2 ring-background" />}</Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[280px] max-w-[85vw] px-4 py-6">
+                  <SheetTitle className="sr-only">Menu</SheetTitle>
+                  <SheetDescription className="sr-only">Move between your CarePulse pages.</SheetDescription>
+                  <PatientSidebar activeView={activeView} onNavigate={go} unreadCount={unreadCount} accountName={accountName} accountDetail={accountDetail} initials={patientInitials} />
+                </SheetContent>
+              </Sheet>
+              <button onClick={() => go("home")} className="font-display text-[19px] font-bold tracking-tight text-care-deep">carepulse<span className="text-care-teal">.</span></button>
             </div>
+            <SampleLabel liveLabel={liveLabel} />
           </header>
 
-          {menuOpen && <nav aria-label="Mobile navigation" className="absolute inset-x-0 z-30 space-y-1 border-b border-care-line bg-background p-3 shadow-md lg:hidden">{navigation.map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" onClick={() => go(id)} className="w-full justify-start gap-3"><Icon className="size-4" />{label}</Button>)}<Button variant="ghost" onClick={() => go("account")} className="w-full justify-start gap-3"><UserRound className="size-4" />{session ? "My account" : "Sign in"}</Button></nav>}
-
-          <main className="mx-auto max-w-[1140px] px-4 pb-28 pt-7 sm:px-7 md:pb-12 md:pt-9 lg:px-10">
+          <main className="mx-auto max-w-[1140px] px-4 pb-12 pt-6 sm:px-7 md:pt-9 lg:px-10">
             {current && <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div><p className="text-[10px] font-semibold text-care-teal">{current.eyebrow}</p><h1 className="mt-1 font-display text-[27px] font-semibold leading-tight tracking-tight text-care-ink sm:text-[32px]">{current.title}</h1></div>
               <Badge variant="outline" className="gap-1.5 border-care-line bg-background text-[10px] font-medium text-muted-foreground"><span className={`size-1.5 rounded-full ${liveLabel || activeView === "doctors" ? "bg-care-teal" : "bg-care-amber"}`} /> {liveLabel ?? (activeView === "doctors" ? "CLINIC DIRECTORY" : "DEMO DATA")}</Badge>
@@ -341,10 +401,6 @@ export function CarePulsePatientApp() {
         </div>
       </div>
 
-      <nav aria-label="Bottom navigation" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-care-line bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur md:hidden">
-        {navigation.filter((item) => item.id !== "notifications").map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" onClick={() => go(id)} aria-current={activeView === id ? "page" : undefined} className={`flex h-[58px] flex-col gap-1 rounded-none px-0 text-[10px] ${activeView === id ? "text-care-teal" : "text-muted-foreground"}`}><Icon className="size-[18px]" /><span>{id === "appointments" ? "Visits" : id === "assistant" ? "Care" : id === "doctors" ? "Doctors" : "Home"}</span></Button>)}
-        <Button variant="ghost" onClick={() => go("notifications")} aria-current={activeView === "notifications" ? "page" : undefined} className={`relative flex h-[58px] flex-col gap-1 rounded-none px-0 text-[10px] ${activeView === "notifications" ? "text-care-teal" : "text-muted-foreground"}`}><Bell className="size-[18px]" /><span>Inbox</span>{unreadCount > 0 && <span className="absolute right-[calc(50%-15px)] top-2 size-1.5 rounded-full bg-care-teal" />}</Button>
-      </nav>
     </div>
   );
 }

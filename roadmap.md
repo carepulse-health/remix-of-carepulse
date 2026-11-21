@@ -11,4 +11,4 @@
 - [x] Fix the clinic's automatic pass creation (one-line gen_random_bytes fix applied and verified).
 - [ ] Clinic staff to verify the July 2000 appointment date before any pass is created for it.
 - [ ] Test sign-in, patient linking and the doctor list end-to-end with a real patient account (needs a patient to sign in on the preview).
-- [x] Display checked_in appointments as "Checked in", show the waiting message, and hide their QR passes without changing other statuses.
+- [x] Display checked_in appointments as "Checked in", show the waiting message, and hide their QR passes without changing other statuses.- [x] Left sidebar navigation (Home, Find a Doctor, Appointments, Inbox, Account) with icon-only collapse on tablets and a slide-out menu on phones.
