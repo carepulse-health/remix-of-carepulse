@@ -12,3 +12,4 @@
 - [ ] Clinic staff to verify the July 2000 appointment date before any pass is created for it.
 - [ ] Test sign-in, patient linking and the doctor list end-to-end with a real patient account (needs a patient to sign in on the preview).
 - [x] Display checked_in appointments as "Checked in", show the waiting message, and hide their QR passes without changing other statuses.- [x] Left sidebar navigation (Home, Find a Doctor, Appointments, Inbox, Account) with icon-only collapse on tablets and a slide-out menu on phones.
+- [ ] End-to-end test of clinic check-in at /clinic/check-in with a real confirmed pass (needs a confirmed appointment and a receptionist/admin account)
