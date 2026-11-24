@@ -384,13 +384,45 @@ export function CarePulsePatientApp() {
               {!(linked && openAppointmentId) && <section className="flex flex-wrap items-center justify-between gap-3 border-b border-care-line pb-4"><p className="text-sm text-muted-foreground">{linked ? "Appointments booked for you by your clinic." : "Sample appointments · no booking information is stored."}</p><div className="flex gap-1 rounded-md bg-muted p-1"><Button size="sm" variant={appointmentTab === "upcoming" ? "default" : "ghost"} onClick={() => setAppointmentTab("upcoming")} className="h-8 px-3 text-xs">Upcoming</Button><Button size="sm" variant={appointmentTab === "past" ? "default" : "ghost"} onClick={() => setAppointmentTab("past")} className="h-8 px-3 text-xs">Past visits</Button></div></section>}
               {record.status === "linked" ? (openAppointmentId && record.appointments.some((a) => a.id === openAppointmentId) ? <AppointmentDetails appointment={record.appointments.find((a) => a.id === openAppointmentId)!} pass={record.passes.find((pass) => pass.appointment_id === openAppointmentId)} clinic={record.clinic} onBack={() => setOpenAppointmentId(null)} onRefresh={refreshRecord} /> : <LiveAppointments record={record} tab={appointmentTab} today={today} onOpen={setOpenAppointmentId} />) : appointmentTab === "upcoming" ? <article className="max-w-2xl overflow-hidden rounded-md border border-care-line bg-background"><div className="flex items-center justify-between gap-2 border-b border-care-line bg-care-panel/60 px-4 py-3"><span className="flex items-center gap-2 text-xs font-semibold text-care-deep"><span className="size-2 rounded-full bg-care-amber" /> EXAMPLE REQUEST</span><Badge variant="outline" className="border-care-line bg-background text-[10px]">Not submitted</Badge></div><div className="p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-display text-xl font-semibold">Friday, November 13</p><p className="mt-1 text-sm text-muted-foreground">11:30 AM · Family medicine</p></div><span className="grid size-11 place-items-center rounded-md bg-care-mist text-care-teal"><CalendarDays className="size-5" /></span></div><div className="mt-5 space-y-3 border-t border-care-line pt-4 text-sm"><p className="flex items-center gap-2"><Stethoscope className="size-4 text-care-teal" />Doctor assigned on clinic record</p><p className="flex items-center gap-2"><MapPin className="size-4 text-care-teal" />Clinic location · sample only</p></div><div className="mt-5 border-t border-care-line pt-4"><Button onClick={() => go("doctors")} variant="outline" size="sm" className="gap-2"><Plus className="size-3.5" /> Explore clinic directory</Button><p className="mt-3 text-[11px] text-muted-foreground">Appointment passes are unavailable until the clinic connection is configured.</p></div></div></article> : <div className="max-w-2xl rounded-md border border-care-line bg-background px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-md bg-muted text-muted-foreground"><FileHeart className="size-[18px]" /></span><div><p className="text-sm font-semibold">Annual wellness visit</p><p className="mt-1 text-xs text-muted-foreground">Sample history · Tuesday, September 8</p></div><span className="ml-auto text-xs text-muted-foreground">Example only</span></div></div>}
             </div>}
+{activeView === "assistant" && (
 
-            {activeView === "assistant" && <div className="max-w-2xl">
-              <section className="overflow-hidden rounded-md border border-care-line bg-background">
-                <div className="flex items-start gap-4 border-b border-care-line bg-care-panel/60 p-5 sm:p-7"><span className="grid size-11 shrink-0 place-items-center rounded-md bg-background text-care-teal"><MessageCircleHeart className="size-5" /></span><div><Badge variant="outline" className="mb-2 border-care-line bg-background text-[9px] text-muted-foreground">SCREENING NOT AVAILABLE</Badge><h2 className="font-display text-lg font-semibold">Your wellbeing deserves safe guidance.</h2><p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">The CarePulse screening and voice assistant are paused until the clinic’s approved safety guide is connected. This preview does not assess symptoms or provide medical advice.</p></div></div>
-                <div className="space-y-4 p-5 sm:p-7"><div className="grid gap-3 sm:grid-cols-2"><div className="border-l-2 border-care-teal pl-3"><span className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="size-4 text-care-teal" /> Clinic-approved guidance</span><p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">Unavailable until safety rules are set.</p></div><div className="border-l-2 border-care-teal pl-3"><span className="flex items-center gap-2 text-sm font-medium"><AudioLines className="size-4 text-care-teal" /> Voice conversations</span><p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">Not enabled in this sample preview.</p></div></div><div className="rounded-md border border-care-line bg-muted/50 p-4"><p className="text-xs font-semibold">Need medical help now?</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Contact your clinic or local emergency service directly. This app cannot assess urgent symptoms.</p></div></div>
-              </section>
-            </div>}
+  <div className="max-w-4xl space-y-4">
+    <section className="overflow-hidden rounded-md border border-care-line bg-background">
+      <div className="border-b border-care-line p-4 sm:p-5">
+        <h2 className="font-display text-lg font-semibold">
+          CarePulse AI Assistant
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Chat with the CarePulse assistant for screening support.
+        </p>
+      </div>
+
+  <iframe
+    src="https://carepulse-screening-bridge-88jp.vercel.app/"
+    title="CarePulse AI Health Assistant"
+    className="h-[75vh] min-h-[650px] w-full border-0"
+    allow="microphone"
+    allowFullScreen
+    loading="lazy"
+  />
+
+  <div className="border-t border-care-line p-4">
+    <p className="mb-3 text-xs text-muted-foreground">
+      This assistant does not replace professional medical care.
+    </p>
+    <a
+      href="https://carepulse-screening-bridge-88jp.vercel.app/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex rounded-md bg-care-teal px-4 py-2 text-sm font-medium text-white"
+    >
+      Open CarePulse Assistant
+    </a>
+  </div>
+</section>
+
+  </div>
+)}
 
             {activeView === "notifications" && (session ? <LiveNotifications state={notifications} /> : <div className="max-w-2xl"><p className="mb-5 text-sm text-muted-foreground">Sample updates only · no messages from a live clinic.</p><div className="divide-y divide-care-line rounded-md border border-care-line bg-background px-4"><article className="flex gap-3 py-4"><span className="grid size-9 shrink-0 place-items-center rounded-md bg-care-panel text-care-teal"><CalendarDays className="size-4" /></span><div><p className="text-sm font-semibold">Your appointment is confirmed <Badge variant="outline" className="ml-1 border-care-line text-[9px] text-muted-foreground">SAMPLE</Badge></p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Sample update for Friday, November 13 at 11:30 AM.</p><p className="mt-2 text-[10px] text-muted-foreground">Example · 2 days ago</p></div></article><article className="flex gap-3 py-4"><span className="grid size-9 shrink-0 place-items-center rounded-md bg-secondary text-primary"><BadgeCheck className="size-4" /></span><div><p className="text-sm font-semibold">Welcome to CarePulse</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Explore the app in sample mode while the clinic connection is being prepared.</p><p className="mt-2 text-[10px] text-muted-foreground">Example · Last week</p></div></article></div></div>)}
 
