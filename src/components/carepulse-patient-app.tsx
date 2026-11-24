@@ -194,6 +194,57 @@ function DoctorRow({ doctor, tone, scheduleText, onBook }: { doctor: { id: strin
 export function CarePulsePatientApp() {
   const [activeView, setActiveView] = useState<View>("home");
   const { session, record, refreshRecord } = usePatientSession();
+  const chatbotFrame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+  const chatbotOrigin = "https://carepulse-screening-bridge-88jp.vercel.app";
+
+  const handleChatbotMessage = async (event: MessageEvent) => {
+    if (
+      event.origin !== chatbotOrigin ||
+      event.source !== chatbotFrame.current?.contentWindow ||
+      event.data?.type !== "carepulse:ready" ||
+      typeof event.data?.challenge !== "string" ||
+      !session?.access_token
+    ) return;
+
+    try {
+      const response = await fetch(
+        `${chatbotOrigin}/api/public/auth-handoff`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            challenge: event.data.challenge,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Secure connection failed.");
+
+      const result = await response.json();
+
+      chatbotFrame.current?.contentWindow?.postMessage(
+        {
+          type: "carepulse:handoff",
+          challenge: event.data.challenge,
+          ticket: result.ticket,
+        },
+        chatbotOrigin
+      );
+    } catch (error) {
+      console.error("CarePulse connection failed:", error);
+    }
+  };
+
+  window.addEventListener("message", handleChatbotMessage);
+
+  return () => {
+    window.removeEventListener("message", handleChatbotMessage);
+  };
+}, [session?.access_token]);
   const [directoryRefreshToken, setDirectoryRefreshToken] = useState(0);
   const directory = useDoctorDirectory(record.status === "linked", directoryRefreshToken);
   const [accountView, setAccountView] = useState<AccountView>("login");
@@ -396,15 +447,15 @@ export function CarePulsePatientApp() {
           Chat with the CarePulse assistant for screening support.
         </p>
       </div>
-
-  <iframe
-    src="https://carepulse-screening-bridge-88jp.vercel.app/"
-    title="CarePulse AI Health Assistant"
-    className="h-[75vh] min-h-[650px] w-full border-0"
-    allow="microphone"
-    allowFullScreen
-    loading="lazy"
-  />
+<iframe
+  ref={chatbotFrame}
+  src="https://carepulse-screening-bridge-88jp.vercel.app/"
+  title="CarePulse AI Health Assistant"
+  className="h-[75vh] min-h-[650px] w-full border-0"
+  allow="microphone"
+  allowFullScreen
+  loading="lazy"
+/>
 
   <div className="border-t border-care-line p-4">
     <p className="mb-3 text-xs text-muted-foreground">
