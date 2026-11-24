@@ -34,3 +34,4 @@ use the editor.
 - Keep live clinic reads in `src/hooks/` (doctor directory, patient session record, patient notifications); UI views consume only their typed, patient- or clinic-scoped results so security filtering stays in one place.
 - Encode appointment pass QR values only through `src/lib/appointment-pass.ts` so the patient app and clinic scanner stay on one format.
 - Clinic pass check-in runs only through the `checkInWithPass` server function in `src/lib/check-in.functions.ts` (role check, existing `verify_appointment_pass` RPC, confirmed→checked_in conditional update); keep pure rules in `src/lib/check-in.ts` so they stay testable and the token never reaches the client or logs.
+- Android packaging uses Capacitor with `CAPACITOR_BUILD=1` switching TanStack Start to SPA mode (webDir `dist/client`); keep web builds unaffected and keep server-function features web-only, since the APK has no server.

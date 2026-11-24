@@ -9,10 +9,15 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// CAPACITOR_BUILD=1 (bun run build:android) emits a static SPA shell (dist/client/index.html)
+// for the Android wrapper. Normal web builds are unaffected.
+const capacitorBuild = process.env["CAPACITOR_BUILD"] === "1";
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+    ...(capacitorBuild ? { spa: { enabled: true, prerender: { outputPath: "/index.html" } } } : {}),
   },
 });
