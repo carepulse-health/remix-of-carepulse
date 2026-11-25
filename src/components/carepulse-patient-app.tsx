@@ -65,6 +65,31 @@ const moreNavigation: NavItem[] = [
   { id: "assistant", label: "Care assistant", icon: MessageCircleHeart },
 ];
 
+export function PatientBottomNav({ activeView, onNavigate, unreadCount }: { activeView: View; onNavigate: (view: View) => void; unreadCount: number }) {
+  return (
+    <nav aria-label="Bottom navigation" className="fixed inset-x-0 bottom-0 z-30 border-t border-care-line/80 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <ul className="mx-auto flex max-w-[560px] items-stretch justify-between px-1">
+        {primaryNavigation.map(({ id, label, icon: Icon }) => {
+          const active = activeView === id;
+          return (
+            <li key={id} className="flex-1">
+              <button type="button" onClick={() => onNavigate(id)} aria-current={active ? "page" : undefined}
+                className={`relative flex h-16 w-full flex-col items-center justify-center gap-1 text-[10.5px] font-medium transition-colors ${active ? "text-care-deep" : "text-muted-foreground hover:text-care-deep"}`}>
+                {active && <span aria-hidden className="absolute inset-x-5 top-0 h-[3px] rounded-b-full bg-care-teal" />}
+                <span className={`relative grid h-7 w-12 place-items-center rounded-full transition-colors ${active ? "bg-care-mist" : ""}`}>
+                  <Icon className={`size-[19px] ${active ? "text-care-teal" : ""}`} />
+                  {id === "notifications" && unreadCount > 0 && <span className="absolute right-2.5 top-0.5 size-2 rounded-full bg-care-teal ring-2 ring-background" aria-label={`${unreadCount} unread`} />}
+                </span>
+                <span className="max-w-full truncate px-0.5 leading-none">{label}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
 const SIDEBAR_STORAGE_KEY = "carepulse.sidebar-collapsed";
 
 export function PatientSidebar({ activeView, onNavigate, unreadCount, collapsed = false, onToggleCollapsed, accountName, accountDetail, initials }: {
@@ -341,7 +366,7 @@ export function CarePulsePatientApp() {
             <SampleLabel liveLabel={liveLabel} />
           </header>
 
-          <main className="mx-auto max-w-[1140px] px-4 pb-12 pt-6 sm:px-7 md:pt-9 lg:px-10">
+          <main className="mx-auto max-w-[1140px] px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-6 md:pb-12 sm:px-7 md:pt-9 lg:px-10">
             {current && <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div><p className="text-[10px] font-semibold text-care-teal">{current.eyebrow}</p><h1 className="mt-1 font-display text-[27px] font-semibold leading-tight tracking-tight text-care-ink sm:text-[32px]">{current.title}</h1></div>
               <Badge variant="outline" className="gap-1.5 border-care-line bg-background text-[10px] font-medium text-muted-foreground"><span className={`size-1.5 rounded-full ${liveLabel || activeView === "doctors" ? "bg-care-teal" : "bg-care-amber"}`} /> {liveLabel ?? (activeView === "doctors" ? "CLINIC DIRECTORY" : "DEMO DATA")}</Badge>
@@ -479,6 +504,7 @@ export function CarePulsePatientApp() {
 
             {activeView === "account" && <AccountScreen accountView={accountView} onSetView={setAccountView} session={session} record={record} refreshRecord={refreshRecord} onAccountLinked={() => setDirectoryRefreshToken((token) => token + 1)} />}
           </main>
+          <PatientBottomNav activeView={activeView} onNavigate={go} unreadCount={unreadCount} />
 
           <footer className="hidden border-t border-care-line px-8 py-4 text-center text-[10px] text-muted-foreground md:block">{linked ? "CarePulse · Not for emergencies · Contact your clinic for urgent care" : "CarePulse · Sample preview · Not for clinical use"}</footer>
         </div>

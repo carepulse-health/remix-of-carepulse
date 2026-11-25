@@ -45,3 +45,17 @@ describe("patient sidebar", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("PatientBottomNav", () => {
+  it("shows five tabs, highlights the active one and navigates", async () => {
+    const { PatientBottomNav } = await import("@/components/carepulse-patient-app");
+    const onNavigate = vi.fn();
+    render(<PatientBottomNav activeView="notifications" onNavigate={onNavigate} unreadCount={0} />);
+    const nav = screen.getByRole("navigation", { name: "Bottom navigation" });
+    const buttons = within(nav).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(["Home", "Find a Doctor", "Appointments", "Inbox", "Account"]);
+    expect(within(nav).getByRole("button", { name: /Inbox/ })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(within(nav).getByRole("button", { name: /Find a Doctor/ }));
+    expect(onNavigate).toHaveBeenCalledWith("doctors");
+  });
+});
